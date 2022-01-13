@@ -520,12 +520,22 @@ func (node xnode) withInsertedItem(item Item, at int) xnode {
 }
 
 func (node xnode) withCutRight() (xnode, Item, *xnode) {
-	assertThat(len(node.items) > 0, "attempt to cut right item from node")
+	assertThat(len(node.items) > 0, "attempt to cut right item from empty node")
 	cow := node.clone()
 	item := cow.items[len(cow.items)-1]
 	rnode := cow.children[len(cow.children)-1]
 	cow.items = cow.items[:len(cow.items)-1]
 	cow.children = cow.children[:len(cow.children)-1]
+	return cow, item, rnode
+}
+
+func (node xnode) withCutLeft() (xnode, Item, *xnode) {
+	assertThat(len(node.items) > 0, "attempt to cut left item from empty node")
+	cow := node.clone()
+	item := cow.items[0]
+	rnode := cow.children[0]
+	cow.items = cow.items[1:len(cow.items)]
+	cow.children = cow.children[1:len(cow.children)]
 	return cow, item, rnode
 }
 
@@ -612,6 +622,9 @@ func (parent slot) balance(child slot, lowWaterMark uint) slot {
 		// rotate left
 		lsbl := parent.rightSibling(child)
 		p = parent.rotateLeft(lsbl, child)
+	} else {
+		// merge (case 2.c  https://algorithmtutor.com/Data-Structures/Tree/B-Trees/ )
+		panic("merge not yet implemented")
 	}
 	return p
 }
