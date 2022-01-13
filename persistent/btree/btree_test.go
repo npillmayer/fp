@@ -1,9 +1,10 @@
 package btree
 
 import (
-	"github.com/stretchr/testify/require"
 	"strconv"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -118,7 +119,7 @@ func Test_BucketAddAndRebalanceSplit(t *testing.T) {
 	child1.addItems("5", "6", "7", "8")
 	root.addChildNode(child1)
 
-	bucket.Put("9","9")
+	bucket.Put("9", "9")
 
 	expectedroot := NewEmptyNode()
 	expectedroot.addItems("4", "7")
@@ -365,7 +366,6 @@ func Test_BucketRemoveFromRootAndRebalanceMergeFromUnbalanced(t *testing.T) {
 	expectedChild1 := NewEmptyNode()
 	expectedChild1.addItems("6", "7")
 	expectedRoot.addChildNode(expectedChild1)
-
 
 	// Remove an element
 	mockTree.Remove("5")
@@ -834,7 +834,7 @@ func Test_BucketUpdateNode(t *testing.T) {
 
 	// Item updated successfully
 	newvalue := "f"
-	mockTree.Put("c",newvalue)
+	mockTree.Put("c", newvalue)
 	item = mockTree.Find("c")
 	assert.Equal(t, newvalue, item.value)
 }

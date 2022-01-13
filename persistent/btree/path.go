@@ -13,8 +13,27 @@ type slot struct {
 	index int
 }
 
-func (slot slot) String() string {
-	return strconv.Itoa(slot.index) + "@" + slot.node.String()
+func (s slot) String() string {
+	return strconv.Itoa(s.index) + "@" + s.node.String()
+}
+
+func (s slot) leftSibling(child slot) slot {
+	if s.node == nil || len(s.node.children) == 0 || s.index == 0 {
+		return slot{}
+	}
+	lsib := s.node.children[s.index-1]
+	return slot{node: lsib, index: len(lsib.items)}
+}
+
+func (s slot) rightSibling(child slot) slot {
+	if s.node == nil || len(s.node.children) == 0 {
+		assertThat(s.index <= len(s.node.children), "internal inconsistency: item index overflow")
+	}
+	if s.node == nil || len(s.node.children) == 0 || s.index == len(s.node.children) {
+		return slot{}
+	}
+	rsib := s.node.children[s.index+1]
+	return slot{node: rsib, index: len(rsib.items)}
 }
 
 func (slot slot) item() Item {

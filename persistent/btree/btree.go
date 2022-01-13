@@ -8,8 +8,8 @@ import (
 
 var DefaultMinItems = 128
 
-const defaultLowWaterMark uint = 3
-const defaultHighWaterMark uint = (defaultLowWaterMark+1)*2 - 1
+const defaultLowWaterMark uint = 3                              // 2^n - 1
+const defaultHighWaterMark uint = (defaultLowWaterMark+1)*2 - 2 // includes space for stopper
 
 type K string      // TODO change to type parameter, ordered
 type T interface{} // TODO change to type parameter, comparable
@@ -206,7 +206,8 @@ func (b *Tree) Put(key string, value interface{}) {
 
 func (tree XTree) With(key K, value T) (newTree XTree) {
 	var path slotPath = make([]slot, tree.depth)
-	if found, path := tree.findKeyAndPath(key, path); found {
+	var found bool
+	if found, path = tree.findKeyAndPath(key, path); found {
 		if path.last().item().value == value {
 			return tree // no need for modification
 		}
@@ -293,6 +294,37 @@ func (b *Tree) Remove(key string) {
 	// If the root has no items after rebalancing
 	if len(b.root.items) == 0 && len(b.root.childNodes) > 0 {
 		b.root = ancestors[1]
+	}
+}
+
+func (tree XTree) WithDeleted(key K) XTree {
+	var path slotPath = make([]slot, tree.depth)
+	var found bool
+	if found, path = tree.findKeyAndPath(key, path); !found {
+		return tree // no need for modification
+	}
+	tracer().Debugf("btree.WithDeleted: slot path = %s", path)
+	del := path.last()
+	cow := del.node.withDeletedItem(del.index) // copy-on-write
+	tracer().Debugf("created copy of node w/out deleted item: %#v", cow)
+	newRoot := path.dropLast().foldR(balance(tree.lowWaterMark),
+		slot{node: &cow, index: del.index},
+	)
+	tracer().Debugf("with: top = %s", newRoot)
+	if newRoot.node.underfull(tree.lowWaterMark) {
+		newRoot = xnode{}.splitChild(newRoot) // TODO possible merge and height decrease
+	}
+	return tree.shallowCloneWithRoot(*newRoot.node)
+}
+
+func balance(lowWaterMark uint) func(slot, slot) slot {
+	return func(parent, child slot) slot {
+		tracer().Debugf("balance: parent = %s, child = %s", parent, child)
+		if child.node.underfull(lowWaterMark) {
+			tracer().Debugf("child is underfull: %v", child)
+			return parent.balance(child, lowWaterMark)
+		}
+		return cloneSeam(parent, child)
 	}
 }
 
@@ -460,6 +492,16 @@ func (node xnode) withReplacedValue(item Item, at int) xnode {
 	return cow
 }
 
+func (node xnode) withDeletedItem(at int) xnode {
+	assertThat(at+1 <= len(node.items), "no space for stopper-item: %d ≤ %d", len(node.items), at)
+	cow := node.clone()
+	cow.items = append(cow.items[:at], cow.items[at+1:]...) // stopper slot required!
+	if !cow.isLeaf() {
+		cow.children = append(cow.children[:at], cow.children[at+1:]...) // stopper slot required!
+	}
+	return cow
+}
+
 func (node xnode) withInsertedItem(item Item, at int) xnode {
 	assertThat(at <= len(node.items), "given item index out of range: %d < %d", len(node.items), at)
 	cap := max(ceiling(at), len(node.items))
@@ -475,6 +517,16 @@ func (node xnode) withInsertedItem(item Item, at int) xnode {
 		cow.children = append(cow.children, cow.children[at:]...)
 	}
 	return cow
+}
+
+func (node xnode) withCutRight() (xnode, Item, *xnode) {
+	assertThat(len(node.items) > 0, "attempt to cut right item from node")
+	cow := node.clone()
+	item := cow.items[len(cow.items)-1]
+	rnode := cow.children[len(cow.children)-1]
+	cow.items = cow.items[:len(cow.items)-1]
+	cow.children = cow.children[:len(cow.children)-1]
+	return cow, item, rnode
 }
 
 // addChild adds a child at a given position. If the child is in the end, then the list
@@ -535,6 +587,7 @@ func (n *Node) split(modifiedNode *Node, insertionIndex int) {
 // Returns a modified copy of node with 2 new children, where the left one substitues a child of node.
 //
 // It's legal to pass in xnode{} as node (in order to create a new Tree.root).
+//
 func (node xnode) splitChild(s slot) slot {
 	child := s.node
 	half := len(node.items) / 2
@@ -547,6 +600,56 @@ func (node xnode) splitChild(s slot) slot {
 	cow.children[index] = &siblingL
 	cow.children[index+1] = &siblingR
 	return slot{node: &cow, index: index}
+}
+
+func (parent slot) balance(child slot, lowWaterMark uint) slot {
+	var p slot // new parent
+	if !parent.leftSibling(child).node.underfull(lowWaterMark + 1) {
+		// rotate right
+		lsbl := parent.leftSibling(child)
+		p = parent.rotateRight(lsbl, child)
+	} else if !parent.rightSibling(child).node.underfull(lowWaterMark + 1) {
+		// rotate left
+		lsbl := parent.rightSibling(child)
+		p = parent.rotateLeft(lsbl, child)
+	}
+	return p
+}
+
+func (parent slot) rotateRight(lsbl, rsbl slot) slot {
+	cow := parent.node.clone()
+	// cut rightmost item from left sibling
+	cowsbl, sblItem, grandChild := lsbl.node.withCutRight()
+	// replace parent item with item from left sibling
+	parentItem := cow.items[parent.index]
+	cow.items[parent.index] = sblItem
+	// insert parent item as leftmost item in child
+	cowch := rsbl.node.withInsertedItem(parentItem, 0)
+	if !cowch.isLeaf() {
+		cowch.children[0] = grandChild
+	}
+	// link new children of parent/cow
+	cow.children[parent.index] = &cowsbl
+	cow.children[parent.index+1] = &cowch
+	return slot{node: &cow, index: parent.index}
+}
+
+func (parent slot) rotateLeft(lsbl, rsbl slot) slot {
+	cow := parent.node.clone()
+	// cut leftmost item from right sibling
+	cowsbl, sblItem, grandChild := rsbl.node.withCutLeft()
+	// replace parent item with item from right sibling
+	parentItem := cow.items[parent.index]
+	cow.items[parent.index] = sblItem
+	// insert parent item as leftmost item in child
+	cowch := lsbl.node.withInsertedItem(parentItem, len(lsbl.node.items))
+	if !cowch.isLeaf() {
+		cowch.children[len(cowch.items)] = grandChild
+	}
+	// link new children of parent/cow
+	cow.children[parent.index] = &cowch
+	cow.children[parent.index+1] = &cowsbl
+	return slot{node: &cow, index: parent.index}
 }
 
 // rebalanceRemove rebalances the tree after a remove operation. This can be either by
