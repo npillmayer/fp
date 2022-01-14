@@ -3,51 +3,44 @@ package btree
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
-func (tree XTree) replacing(key K, value T, path slotPath) (newTree XTree) {
-	assertThat(len(path) > 0, "cannot replace item without path")
-	tracer().Debugf("btree.With: slot path = %s", path)
-	hit := path[len(path)-1] // slot where `key` lives
-	item := xitem{key: key, value: value}
-	cow := hit.node.withReplacedValue(item, hit.index)
-	tracer().Debugf("created copy of node for replacement: %#v", cow)
-	newRoot := path.dropLast().foldR(cloneSeam, slot{node: &cow, index: hit.index})
-	tracer().Debugf("replace: top = %s", newRoot)
-	newTree.root = newRoot.node
-	return
+type K string      // TODO change to type parameter, ordered
+type T interface{} // TODO change to type parameter, comparable
+
+type xitem struct {
+	key   K
+	value T
 }
 
-func splitAndClone(highWaterMark uint) func(slot, slot) slot {
-	return func(parent, child slot) slot {
-		tracer().Debugf("split&propagate: parent = %s, child = %s", parent, child)
-		if child.node.overfull(highWaterMark) {
-			tracer().Debugf("child is overfull: %v", child)
-			return parent.node.splitChild(child)
-		}
-		return cloneSeam(parent, child)
+type xnode struct {
+	items    []xitem
+	children []*xnode
+}
+
+// --- Tree ------------------------------------------------------------------
+
+func (tree Tree) shallowCloneWithRoot(node xnode) Tree {
+	var newTree Tree
+	newTree.depth = tree.depth
+	newTree.lowWaterMark, newTree.highWaterMark = tree.lowWaterMark, tree.highWaterMark
+	if newTree.lowWaterMark == 0 {
+		newTree.lowWaterMark = defaultLowWaterMark
+		newTree.highWaterMark = defaultHighWaterMark
 	}
+	newTree.root = &node
+	return newTree
 }
 
-func cloneSeam(parent, child slot) slot {
-	tracer().Debugf("seam: parent = %s, child = %s", parent, child)
-	cowParent := parent.node.clone()
-	cowParent.children[parent.index] = child.node
-	return slot{node: &cowParent, index: parent.index}
+func (tree Tree) withDepth(d uint) Tree {
+	t := tree.shallowCloneWithRoot(xnode{})
+	t.root = tree.root
+	t.depth = d
+	return t
 }
 
-func balance(lowWaterMark uint) func(slot, slot) slot {
-	return func(parent, child slot) slot {
-		tracer().Debugf("balance: parent = %s, child = %s", parent, child)
-		if child.node.underfull(lowWaterMark) {
-			tracer().Debugf("child is underfull: %v", child)
-			return parent.balance(child, lowWaterMark)
-		}
-		return cloneSeam(parent, child)
-	}
-}
-
-func (tree XTree) findKeyAndPath(key K, pathBuf slotPath) (found bool, path slotPath) {
+func (tree Tree) findKeyAndPath(key K, pathBuf slotPath) (found bool, path slotPath) {
 	path = pathBuf[:0] // we track the path to the key's slot
 	if tree.root == nil {
 		return
@@ -70,14 +63,35 @@ func (tree XTree) findKeyAndPath(key K, pathBuf slotPath) (found bool, path slot
 	return
 }
 
-func (node *xnode) findSlot(key K) (bool, int) {
-	items, itemcnt := node.items, len(node.items)
-	k := key
-	slotinx := sort.Search(itemcnt, func(i int) bool {
-		return items[i].key >= k // sort.Search will find the smallest i for which this is true
-	})
-	tracer().Debugf("slot index ∈ %v = %d", items, slotinx)
-	return slotinx < itemcnt && k == items[slotinx].key, slotinx
+func (tree Tree) replacing(key K, value T, path slotPath) (newTree Tree) {
+	assertThat(len(path) > 0, "cannot replace item without path")
+	tracer().Debugf("btree.With: slot path = %s", path)
+	hit := path[len(path)-1] // slot where `key` lives
+	item := xitem{key: key, value: value}
+	cow := hit.node.withReplacedValue(item, hit.index)
+	tracer().Debugf("created copy of node for replacement: %#v", cow)
+	newRoot := path.dropLast().foldR(cloneSeam, slot{node: &cow, index: hit.index})
+	tracer().Debugf("replace: top = %s", newRoot)
+	newTree.root = newRoot.node
+	return
+}
+
+// --- Node ------------------------------------------------------------------
+
+func (node xnode) String() string {
+	if node.items == nil {
+		return "[]"
+	}
+	sb := strings.Builder{}
+	sb.WriteRune('[')
+	for i, item := range node.items {
+		if i > 0 {
+			sb.WriteRune(',')
+		}
+		sb.WriteString(fmt.Sprintf("%v", item.key))
+	}
+	sb.WriteRune(']')
+	return sb.String()
 }
 
 func (node xnode) withReplacedValue(item xitem, at int) xnode {
@@ -99,7 +113,7 @@ func (node xnode) withDeletedItem(at int) xnode {
 
 func (node xnode) withInsertedItem(item xitem, at int) xnode {
 	assertThat(at <= len(node.items), "given item index out of range: %d < %d", len(node.items), at)
-	cap := max(ceiling(at), len(node.items))
+	cap := max(at, len(node.items))
 	cow := node.cloneWithCapacity(cap) // change-on-write behaviour requires copying
 	if at == len(node.items) {         // append at the end
 		cow.items = append(cow.items, item)
@@ -134,6 +148,87 @@ func (node xnode) withCutLeft() (xnode, xitem, *xnode) {
 	return cow, item, rnode
 }
 
+func (node xnode) clone() xnode {
+	return node.cloneWithCapacity(0)
+}
+
+func (node xnode) cloneWithCapacity(cap int) xnode {
+	itemcnt := len(node.items)
+	n := xnode{}
+	if itemcnt == 0 && cap <= 0 {
+		return n
+	}
+	if cap < itemcnt {
+		cap = itemcnt
+	}
+	if cap == 0 {
+		return n
+	}
+	cap = ceiling(cap) // there must always be room for itemcnt + 2
+	assertThat(cap > itemcnt, "cap has to be ceiling(itemcnt)[%d] > itemcnt[%d]", cap, itemcnt)
+	n.items = make([]xitem, itemcnt, cap)
+	copy(n.items, node.items)
+	if !node.isLeaf() {
+		n.children = make([]*xnode, itemcnt+1, cap)
+		copy(n.children, node.children)
+	}
+	return n
+}
+
+// asNonLeaf asserts that a node is not a leaf. Returns a copy with an empty children-slice
+// allocated, if none present.
+func (node xnode) asNonLeaf() xnode {
+	if !node.isLeaf() {
+		return node
+	}
+	return xnode{
+		items:    node.items,
+		children: make([]*xnode, 0, cap(node.items)),
+	}
+}
+
+// slice returns node[from:to]. if to == -1, it will be replaced by the length of `node.items`.
+func (node xnode) slice(from, to int) xnode {
+	if to < 0 {
+		to = len(node.items)
+	}
+	if to-from <= 0 {
+		return xnode{}
+	}
+	size := from - to
+	s := xnode{items: make([]xitem, size, ceiling(size))}
+	copy(s.items, node.items[from:to])
+	if len(node.children) > 0 {
+		s.children = make([]*xnode, size, ceiling(size))
+		copy(s.children, node.children[from:to])
+	}
+	return s
+}
+
+func (node xnode) isLeaf() bool {
+	return len(node.children) == 0
+}
+
+func (node xnode) overfull(highWater uint) bool {
+	return len(node.items) > int(highWater)
+}
+
+func (node xnode) underfull(lowWater uint) bool {
+	return len(node.items) < int(lowWater)
+}
+
+func (node *xnode) findSlot(key K) (bool, int) {
+	items, itemcnt := node.items, len(node.items)
+	k := key
+	slotinx := sort.Search(itemcnt, func(i int) bool {
+		return items[i].key >= k // sort.Search will find the smallest i for which this is true
+	})
+	tracer().Debugf("slot index ∈ %v = %d", items, slotinx)
+	return slotinx < itemcnt && k == items[slotinx].key, slotinx
+}
+
+// --- Splitting and balancing -----------------------------------------------
+
 // splitChild splits an overfull child node.
 // It is not checked if the child is indeed overfull.
 // Returns a modified copy of node with 2 new children, where the left one substitues a child of node.
@@ -152,6 +247,35 @@ func (node xnode) splitChild(s slot) slot {
 	cow.children[index] = &siblingL
 	cow.children[index+1] = &siblingR
 	return slot{node: &cow, index: index}
+}
+
+func cloneSeam(parent, child slot) slot {
+	tracer().Debugf("seam: parent = %s, child = %s", parent, child)
+	cowParent := parent.node.clone()
+	cowParent.children[parent.index] = child.node
+	return slot{node: &cowParent, index: parent.index}
+}
+
+func splitAndClone(highWaterMark uint) func(slot, slot) slot {
+	return func(parent, child slot) slot {
+		tracer().Debugf("split&propagate: parent = %s, child = %s", parent, child)
+		if child.node.overfull(highWaterMark) {
+			tracer().Debugf("child is overfull: %v", child)
+			return parent.node.splitChild(child)
+		}
+		return cloneSeam(parent, child)
+	}
+}
+
+func balance(lowWaterMark uint) func(slot, slot) slot {
+	return func(parent, child slot) slot {
+		tracer().Debugf("balance: parent = %s, child = %s", parent, child)
+		if child.node.underfull(lowWaterMark) {
+			tracer().Debugf("child is underfull: %v", child)
+			return parent.balance(child, lowWaterMark)
+		}
+		return cloneSeam(parent, child)
+	}
 }
 
 func (parent slot) balance(child slot, lowWaterMark uint) slot {
@@ -174,7 +298,7 @@ func (parent slot) merge(siblings [2]slot) slot {
 	cow := parent.node.withDeletedItem(parent.index)
 	newParent := slot{node: &cow, index: parent.index}
 	lsbl, rsbl := siblings[0], siblings[1] // rsbl may be slot{}, i.e. empty
-	cap := ceiling(lsbl.len() + rsbl.len() + 1)
+	cap := lsbl.len() + rsbl.len() + 1
 	cowch := lsbl.node.cloneWithCapacity(cap)
 	assertThat(len(cowch.items) == len(lsbl.node.items), "internal inconsistency")
 	cowch.items = append(cowch.items, parent.item())
@@ -242,5 +366,13 @@ func max(a, b int) int {
 }
 
 func ceiling(n int) int {
-	return ((n + 1) >> 1) << 1
+	if n <= 0 {
+		return 0
+	}
+	// we need N=n+2 entries, but start the algorithm with N=n-1 => N=n+1
+	n = n + 1
+	for n&(n-1) > 0 { // do till only one bit is left
+		n = n & (n - 1) // unset rightmost bit
+	} // `n` is now a power of two (less than `n`)
+	return n << 1 // return next power of 2
 }

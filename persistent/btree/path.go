@@ -121,26 +121,3 @@ func (path slotPath) dropLast() slotPath {
 	}
 	return path[:len(path)-1]
 }
-
-func (path slotPath) First() slot {
-	if len(path) == 0 {
-		return slot{}
-	}
-	return path[0]
-}
-
-// Map is destructive !
-func (path slotPath) Map(apply func(slot) slot) slotPath {
-	for i, slot := range path {
-		path[i] = apply(slot)
-	}
-	return path
-}
-
-// Reverse is destructive !
-func (path slotPath) Reverse() slotPath {
-	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
-		path[i], path[j] = path[j], path[i]
-	}
-	return path
-}

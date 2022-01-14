@@ -1,10 +1,5 @@
 package btree
 
-import (
-	"fmt"
-	"strings"
-)
-
 /*
 TODOs:
 
@@ -14,128 +9,42 @@ TODOs:
 - replace K and T with generic types for Go 1.18
 */
 
-const defaultLowWaterMark uint = 3                              // 2^n - 1
-const defaultHighWaterMark uint = (defaultLowWaterMark+1)*2 - 2 // includes space for stopper
+const defaultLowWaterMark uint = 3 // 2^n - 1
+// high water mark includes space for +1 child link and for a stopper
+var defaultHighWaterMark uint = uint(ceiling(int(defaultLowWaterMark)*2)) - 2
 
-type K string      // TODO change to type parameter, ordered
-type T interface{} // TODO change to type parameter, comparable
-
-type xitem struct {
-	key   K
-	value T
-}
-
-// ---------------------------------------------------------------------------
-
-type xnode struct {
-	items    []xitem
-	children []*xnode
-}
-
-func (node xnode) clone() xnode {
-	return node.cloneWithCapacity(0)
-}
-
-func (node xnode) cloneWithCapacity(cap int) xnode {
-	itemcnt := len(node.items)
-	n := xnode{}
-	if itemcnt == 0 && cap <= 0 {
-		return n
-	}
-	if cap <= itemcnt { // there must always be room for itemcnt + 1
-		cap = ceiling(itemcnt)
-	}
-	n.items = make([]xitem, itemcnt, cap)
-	copy(n.items, node.items)
-	if !node.isLeaf() {
-		n.children = make([]*xnode, itemcnt+1, cap)
-		copy(n.children, node.children)
-	}
-	return n
-}
-
-// asNonLeaf asserts that a node is not a leaf. Returns a copy with an empty children-slice
-// allocated, if none present.
-func (node xnode) asNonLeaf() xnode {
-	if !node.isLeaf() {
-		return node
-	}
-	return xnode{
-		items:    node.items,
-		children: make([]*xnode, 0, cap(node.items)),
-	}
-}
-
-// slice returns node[from:to]. if to == -1, it will be replaced by the length of `node.items`.
-func (node xnode) slice(from, to int) xnode {
-	if to < 0 {
-		to = len(node.items)
-	}
-	if to-from <= 0 {
-		return xnode{}
-	}
-	size := from - to
-	s := xnode{items: make([]xitem, size, ceiling(size))}
-	copy(s.items, node.items[from:to])
-	if len(node.children) > 0 {
-		s.children = make([]*xnode, size, ceiling(size))
-		copy(s.children, node.children[from:to])
-	}
-	return s
-}
-
-func (node xnode) String() string {
-	if node.items == nil {
-		return "[]"
-	}
-	sb := strings.Builder{}
-	sb.WriteRune('[')
-	for i, item := range node.items {
-		if i > 0 {
-			sb.WriteRune(',')
-		}
-		sb.WriteString(fmt.Sprintf("%v", item.key))
-	}
-	sb.WriteRune(']')
-	return sb.String()
-}
-
-func (node xnode) isLeaf() bool {
-	return len(node.children) == 0
-}
-
-func (node xnode) overfull(highWater uint) bool {
-	return len(node.items) > int(highWater)
-}
-
-func (node xnode) underfull(lowWater uint) bool {
-	return len(node.items) < int(lowWater)
-}
-
-// ---------------------------------------------------------------------------
-
-// Tree{} should be a valid btree
-type XTree struct {
-	root          *xnode // TODO root needs special treatment when cloning!
+type Tree struct {
+	root          *xnode
 	depth         uint
 	lowWaterMark  uint
 	highWaterMark uint
 }
 
-func (tree XTree) shallowCloneWithRoot(node xnode) XTree {
-	var newTree XTree
-	newTree.lowWaterMark, newTree.highWaterMark = tree.lowWaterMark, tree.highWaterMark
-	if newTree.lowWaterMark == 0 {
-		newTree.lowWaterMark = defaultLowWaterMark
-		newTree.highWaterMark = defaultHighWaterMark
+func Immutable(opts ...Option) Tree {
+	tree := Tree{
+		lowWaterMark:  defaultLowWaterMark,
+		highWaterMark: defaultHighWaterMark,
 	}
-	newTree.root = &node
-	return newTree
+	for _, option := range opts {
+		tree = option(tree)
+	}
+	return tree
+}
+
+type Option func(Tree) Tree
+
+func LowWaterMark(n int) Option {
+	return func(tree Tree) Tree {
+		nodesize := ceiling(max(3, n))
+		tree.lowWaterMark = uint(nodesize<<2) - 1
+		tree.highWaterMark = uint(nodesize) - 2
+		return tree
+	}
 }
 
 // --- API -------------------------------------------------------------------
 
-func (tree XTree) Find(key K) (bool, T) {
+func (tree Tree) Find(key K) (bool, T) {
 	var found bool
 	var path slotPath = make([]slot, tree.depth)
 	if found, path = tree.findKeyAndPath(key, path); found {
@@ -145,7 +54,7 @@ func (tree XTree) Find(key K) (bool, T) {
 	return false, none
 }
 
-func (tree XTree) With(key K, value T) (newTree XTree) {
+func (tree Tree) With(key K, value T) (newTree Tree) {
 	var path slotPath = make([]slot, tree.depth)
 	var found bool
 	if found, path = tree.findKeyAndPath(key, path); found {
@@ -157,7 +66,7 @@ func (tree XTree) With(key K, value T) (newTree XTree) {
 	tracer().Debugf("btree.With: slot path = %s", path)
 	item := xitem{key, value}
 	if tree.root == nil { // virgin tree => insert first node and return
-		return tree.shallowCloneWithRoot(xnode{}.withInsertedItem(item, 0))
+		return tree.shallowCloneWithRoot(xnode{}.withInsertedItem(item, 0)).withDepth(1)
 	}
 	leafSlot := path.last()
 	assertThat(leafSlot.node.isLeaf(), "attempt to insert item at non-leaf")
@@ -169,12 +78,13 @@ func (tree XTree) With(key K, value T) (newTree XTree) {
 	tracer().Debugf("with: top = %s", newRoot)
 	if newRoot.node.overfull(tree.highWaterMark) {
 		newRoot = xnode{}.splitChild(newRoot)
+		newTree.depth++
 	}
 	newTree.root = newRoot.node
 	return
 }
 
-func (tree XTree) WithDeleted(key K) XTree {
+func (tree Tree) WithDeleted(key K) Tree {
 	var path slotPath = make([]slot, tree.depth)
 	var found bool
 	if found, path = tree.findKeyAndPath(key, path); !found {
@@ -188,11 +98,14 @@ func (tree XTree) WithDeleted(key K) XTree {
 		slot{node: &cow, index: del.index},
 	)
 	tracer().Debugf("with: top = %s", newRoot)
+	newTree := tree.shallowCloneWithRoot(*newRoot.node)
 	switch { // catch border cases where root is empty after deletion
 	case newRoot.len() == 0 && newRoot.node.children[0] != nil:
-		newRoot = slot{node: newRoot.node.children[0], index: 0}
+		newTree.root = newRoot.node.children[0]
+		newTree.depth--
 	case newRoot.len() == 0 && newRoot.node.isLeaf():
-		newRoot.node = nil
+		newTree.root = nil
+		newTree.depth = 0
 	}
-	return tree.shallowCloneWithRoot(*newRoot.node)
+	return newTree
 }
