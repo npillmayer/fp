@@ -141,7 +141,7 @@ func createMockTree() XTree { // tree with values 0…9, without 7
 
 func (node *xnode) add(keys ...K) *xnode {
 	for _, key := range keys {
-		node.items = append(node.items, makeItem(key, key))
+		node.items = append(node.items, xitem{key, key})
 	}
 	return node
 }
