@@ -97,6 +97,7 @@ func (node xnode) String() string {
 func (node xnode) withReplacedValue(item xitem, at int) xnode {
 	assertThat(at <= len(node.items), "given item index out of range: %d < %d", len(node.items), at)
 	cow := node.clone()
+	assertThat(item.key == cow.items[at].key, "attempt to replace value for different key")
 	cow.items[at].value = item.value
 	return cow
 }
@@ -113,7 +114,7 @@ func (node xnode) withDeletedItem(at int) xnode {
 
 func (node xnode) withInsertedItem(item xitem, at int) xnode {
 	assertThat(at <= len(node.items), "given item index out of range: %d < %d", len(node.items), at)
-	cap := max(at, len(node.items))
+	cap := max(at+1, len(node.items))
 	cow := node.cloneWithCapacity(cap) // change-on-write behaviour requires copying
 	if at == len(node.items) {         // append at the end
 		cow.items = append(cow.items, item)

@@ -6,8 +6,9 @@ import (
 	"strings"
 )
 
+// --- Slot ------------------------------------------------------------------
+
 // slot holds a step of a path.
-// A slot is treated to be immutable after creation.
 type slot struct {
 	node  *xnode
 	index int
@@ -17,8 +18,6 @@ func (s slot) String() string {
 	return strconv.Itoa(s.index) + "@" + s.node.String()
 }
 
-// parentItem := cow.items[parent.index]
-// cow.items[parent.index] = sblItem
 func (s slot) replaceItem(item xitem) xitem {
 	assertThat(s.index < len(s.node.items), "internal inconsistency: item index overflow")
 	old := s.node.items[s.index]
@@ -30,17 +29,16 @@ func (s slot) leftSibling(child slot) slot {
 	if s.node == nil || len(s.node.children) == 0 || s.index == 0 {
 		return slot{}
 	}
+	assertThat(s.index <= len(s.node.children), "internal inconsistency: item index overflow")
 	lsib := s.node.children[s.index-1]
 	return slot{node: lsib, index: len(lsib.items)}
 }
 
 func (s slot) rightSibling(child slot) slot {
-	if s.node == nil || len(s.node.children) == 0 {
-		assertThat(s.index <= len(s.node.children), "internal inconsistency: item index overflow")
-	}
 	if s.node == nil || len(s.node.children) == 0 || s.index == len(s.node.children) {
 		return slot{}
 	}
+	assertThat(s.index <= len(s.node.children), "internal inconsistency: item index overflow")
 	rsib := s.node.children[s.index+1]
 	return slot{node: rsib, index: len(rsib.items)}
 }
@@ -54,6 +52,7 @@ func (s slot) siblings2(child slot) (siblings [2]slot) {
 		sbl = s.rightSibling(child)
 		siblings[0], siblings[1] = child, sbl
 	}
+	assertThat(siblings[0].node != nil, "sibling-pair needs to have non-empty left sibling")
 	return
 }
 
@@ -84,6 +83,8 @@ func (s slot) underfull(lowWaterMark uint) bool {
 	}
 	return s.node.underfull(lowWaterMark)
 }
+
+// --- Path ------------------------------------------------------------------
 
 type slotPath []slot
 
