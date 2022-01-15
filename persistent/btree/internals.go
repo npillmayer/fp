@@ -103,12 +103,13 @@ func (node xnode) withReplacedValue(item xitem, at int) xnode {
 }
 
 func (node xnode) withDeletedItem(at int) xnode {
-	assertThat(at+1 <= len(node.items), "no space for stopper-item: %d ≤ %d", len(node.items), at)
+	assertThat(at <= len(node.items), "given item index out of range: %d < %d", len(node.items), at)
 	cow := node.clone()
-	cow.items = append(cow.items[:at], cow.items[at+1:]...) // stopper slot required!
+	cow.items = append(cow.items[:at], cow.items[at+1:]...)
 	if !cow.isLeaf() {
-		cow.children = append(cow.children[:at], cow.children[at+1:]...) // stopper slot required!
+		cow.children = append(cow.children[:at], cow.children[at+1:]...)
 	}
+	tracer().Debugf("after node.delete(item): len=%d, cap=%d", len(cow.items), cap(cow.items))
 	return cow
 }
 
@@ -133,20 +134,26 @@ func (node xnode) withCutRight() (xnode, xitem, *xnode) {
 	assertThat(len(node.items) > 0, "attempt to cut right item from empty node")
 	cow := node.clone()
 	item := cow.items[len(cow.items)-1]
-	rnode := cow.children[len(cow.children)-1]
 	cow.items = cow.items[:len(cow.items)-1]
-	cow.children = cow.children[:len(cow.children)-1]
-	return cow, item, rnode
+	var rchld *xnode
+	if !node.isLeaf() {
+		rchld = cow.children[len(cow.children)-1]
+		cow.children = cow.children[:len(cow.children)-1]
+	}
+	return cow, item, rchld
 }
 
 func (node xnode) withCutLeft() (xnode, xitem, *xnode) {
 	assertThat(len(node.items) > 0, "attempt to cut left item from empty node")
 	cow := node.clone()
 	item := cow.items[0]
-	rnode := cow.children[0]
 	cow.items = cow.items[1:len(cow.items)]
-	cow.children = cow.children[1:len(cow.children)]
-	return cow, item, rnode
+	var lchld *xnode
+	if !node.isLeaf() {
+		lchld = cow.children[0]
+		cow.children = cow.children[1:len(cow.children)]
+	}
+	return cow, item, lchld
 }
 
 func (node xnode) clone() xnode {
