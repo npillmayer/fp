@@ -224,12 +224,47 @@ func TestTreeDeleteInsertedKeyFromLeaf(t *testing.T) {
 }
 func TestTreeDeleteAndMerge(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
-	//tracer().SetTraceLevel(tracing.LevelError)
+	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
 	tree := createTreeForTest()
+	//t.Logf("tree =\n%s", printTree(tree))
 	tree = tree.WithDeleted("9")
-	printTree(tree)
+	if tree.depth != 2 {
+		t.Logf("tree =\n%s", printTree(tree))
+		t.Errorf("expected tree to have depth=2, has %d", tree.depth)
+	}
+	ch := tree.root.children
+	if len(ch) != 2 {
+		t.Logf("tree =\n%s", printTree(tree))
+		t.Fatalf("expected root to have 2 children, has %d", len(ch))
+	}
+	if len(ch[1].items) != 5 {
+		t.Logf("tree =\n%s", printTree(tree))
+		t.Fatalf("expected right child to have 5 items, has %d", len(ch[1].items))
+	}
+	if ch[1].items[2].key != "5" {
+		t.Logf("tree =\n%s", printTree(tree))
+		t.Fatalf("expected right child to have middle item 5, has %v", ch[1].items[2].key)
+	}
+}
+
+func TestTreeDeleteInnerItem(t *testing.T) {
+	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	tracer().SetTraceLevel(tracing.LevelError)
+	defer teardown()
+	//
+	tree := createTreeForTest()
+	t.Logf("tree =\n%s", printTree(tree))
+	tree = tree.WithDeleted("5")
+	if tree.depth != 2 {
+		t.Logf("tree =\n%s", printTree(tree))
+		t.Errorf("expected tree to have depth=2, has %d", tree.depth)
+	}
+	t.Logf("tree =\n%s", printTree(tree))
+	if len(tree.root.children) < 3 {
+		t.Fatalf("TODO think about this case")
+	}
 }
 
 // ---------------------------------------------------------------------------

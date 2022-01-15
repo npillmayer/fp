@@ -43,19 +43,27 @@ func (s slot) rightSibling(child slot) slot {
 	return slot{node: rsib, index: len(rsib.items)}
 }
 
+// mergeinfo is an ad-hoc tuple for merging tree nodes
+type mergeinfo struct {
+	parent slot
+	left   slot
+	right  slot
+}
+
 // siblings2 returns child and a non-void sibling as a correctly ordered pair.
 // If child is an only child, a pair with an empty right sibling will be returned.
-func (s slot) siblings2(child slot) (siblings [2]slot, delinx int) {
-	delinx = s.index - 1
+func (s slot) siblings2(child slot) mergeinfo {
+	mi := mergeinfo{parent: s}
 	sbl := s.leftSibling(child)
-	siblings[0], siblings[1] = sbl, child
-	if sbl.node == nil {
+	if sbl.node == nil { // no left sibling available
 		sbl = s.rightSibling(child)
-		siblings[0], siblings[1] = child, sbl
-		delinx++
+		mi.left, mi.right = child, sbl
+	} else {
+		mi.left, mi.right = sbl, child
+		mi.parent.index--
 	}
-	assertThat(siblings[0].node != nil, "sibling-pair needs to have non-empty left sibling")
-	return
+	assertThat(mi.left.node != nil, "sibling-pair needs to have non-empty left sibling")
+	return mi
 }
 
 func (s slot) item() xitem {

@@ -303,8 +303,7 @@ func (parent slot) balance(child slot, lowWaterMark uint) slot {
 		return parent.rotateLeft(child, parent.rightSibling(child))
 	}
 	// steal item from parent and merge with a sibling
-	siblings, delinx := parent.siblings2(child)
-	return parent.merge(siblings, delinx)
+	return parent.merge(parent.siblings2(child))
 }
 
 // merge steals an item from parent and merges child with a sibling.
@@ -312,28 +311,26 @@ func (parent slot) balance(child slot, lowWaterMark uint) slot {
 //
 // siblings is the pair of slots to merge. child is one of this pair, and we need it to
 // know which item of the parent to extract.
-func (parent slot) merge(siblings [2]slot, delinx int) slot {
+func (parent slot) merge(mi mergeinfo) slot {
 	assertThat(parent.len() > 0, "attempt to extract an item from an empty parent node")
-	tracer().Debugf("merge: parent = %s", parent)
-	tracer().Debugf("       sibling L = %s", siblings[0])
-	tracer().Debugf("       sibling R = %s", siblings[1])
-	// we need to know if parent.index is ok, or one of its neighbors
-	// TODO
-	parent.index = delinx
-	cow := parent.node.withDeletedItem(delinx)
-	//cow := parent.node.withDeletedItem(parent.index)
-	newParent := slot{node: &cow, index: parent.index}
-	lsbl, rsbl := siblings[0], siblings[1] // rsbl may be slot{}, i.e. empty
+	assertThat(parent.node == mi.parent.node, "internal inconsistency")
+	tracer().Debugf("merge: parent = %s", mi.parent)
+	tracer().Debugf("       sibling L = %s", mi.left)
+	tracer().Debugf("       sibling R = %s", mi.right)
+	cow := parent.node.withDeletedItem(mi.parent.index)
+	newParent := slot{node: &cow, index: mi.parent.index}
+	//lsbl, rsbl := siblings[0], siblings[1] // rsbl may be slot{}, i.e. empty
+	lsbl, rsbl := mi.left, mi.right // mi.right may be slot{}, i.e. empty
 	cap := lsbl.len() + rsbl.len() + 1
 	cowch := lsbl.node.cloneWithCapacity(cap)
 	assertThat(len(cowch.items) == len(lsbl.node.items), "internal inconsistency")
-	cowch.items = append(cowch.items, parent.item())
+	cowch.items = append(cowch.items, mi.parent.item())
 	cowch.items = append(cowch.items, rsbl.items()...)
 	if !cowch.isLeaf() && rsbl.len() > 0 {
 		cowch.children = append(cowch.children, rsbl.node.children...)
 		assertThat(len(cowch.children) == lsbl.len()+1, "internal inconsistency")
 	}
-	cow.children[parent.index] = &cowch // link new parent to new child
+	cow.children[mi.parent.index] = &cowch // link new parent to new child
 	return newParent
 }
 
