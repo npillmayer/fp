@@ -3,17 +3,18 @@ package btree
 import (
 	"testing"
 
+	"github.com/npillmayer/schuko/tracing"
 	"github.com/npillmayer/schuko/tracing/gotestingadapter"
 )
 
-func TestCreateMock(t *testing.T) {
+func TestTreeCreateMock(t *testing.T) {
 	tree := createMockTree()
 	if tree.root == nil {
 		t.Error("cannot create mock tree")
 	}
 }
 
-func TestFindInEmptyTree(t *testing.T) {
+func TestTreeFindInEmptyTree(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
 	defer teardown()
 	//
@@ -24,8 +25,9 @@ func TestFindInEmptyTree(t *testing.T) {
 	}
 }
 
-func TestFindKeyAndPath(t *testing.T) {
+func TestTreeFindKeyAndPath(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
 	tree := createMockTree()
@@ -44,38 +46,9 @@ func TestFindKeyAndPath(t *testing.T) {
 	}
 }
 
-func TestFindInNode(t *testing.T) {
+func TestTreeInsertInEmptyTree(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
-	defer teardown()
-	//
-	node := (&xnode{}).add("1", "2", "3", "4", "5", "6", "7", "8", "9")
-	found, at := node.findSlot("7")
-	if !found || at != 6 {
-		t.Logf("found = %v, at = %d", found, at)
-		t.Error("1: expected findSlot to find 7 at position 6, didn't")
-	}
-	node = (&xnode{}).add("1", "2", "3", "4", "5", "6", "8", "9")
-	found, at = node.findSlot("7")
-	if found || at != 6 {
-		t.Logf("found = %v, at = %d", found, at)
-		t.Error("2: expected findSlot to find empty slot for 7 at position 6, didn't")
-	}
-	node = &xnode{}
-	found, at = node.findSlot("7")
-	if found || at != 0 {
-		t.Logf("found = %v, at = %d", found, at)
-		t.Error("3: expected empty.findSlot to find empty slot for 7 at position 0, didn't")
-	}
-	node = (&xnode{}).add("1", "2", "3", "4", "5", "6")
-	found, at = node.findSlot("7")
-	if found || at != 6 {
-		t.Logf("found = %v, at = %d", found, at)
-		t.Error("4: expected findSlot to find empty slot for 7 at final position 6, didn't")
-	}
-}
-
-func TestInsertInEmptyTree(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
 	tree := Tree{}.With("7", 7)
@@ -92,8 +65,9 @@ func TestInsertInEmptyTree(t *testing.T) {
 	}
 }
 
-func TestInsertWith(t *testing.T) {
+func TestTreeInsertWith(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
 	tree := Tree{}.With("7", 7)
@@ -107,8 +81,9 @@ func TestInsertWith(t *testing.T) {
 	t.Logf("tree = %#v", tree)
 }
 
-func TestInsertWithInLeaf(t *testing.T) {
+func TestTreeInsertWithInLeaf(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
 	tree := createMockTree()

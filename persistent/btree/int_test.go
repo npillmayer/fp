@@ -3,6 +3,7 @@ package btree
 import (
 	"testing"
 
+	"github.com/npillmayer/schuko/tracing"
 	"github.com/npillmayer/schuko/tracing/gotestingadapter"
 )
 
@@ -27,6 +28,8 @@ func TestInternalCeiling(t *testing.T) {
 		}
 	}
 }
+
+// --- Nodes -----------------------------------------------------------------
 
 func TestInternalNodeInsert(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
@@ -65,6 +68,7 @@ func TestInternalNodeReplaceValue(t *testing.T) {
 
 func TestInternalNodeDeleteItem(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
 	node := xnode{}.withInsertedItem(xitem{key: "1", value: 1}, 0)
@@ -116,5 +120,64 @@ func TestInternalCut(t *testing.T) {
 	rest, item, _ = node.withCutRight()
 	if len(rest.items) != 0 {
 		t.Errorf("expected len(rest) of cut-off to be 1, is %d", len(rest.items))
+	}
+}
+
+func TestInternalFindSlot(t *testing.T) {
+	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	tracer().SetTraceLevel(tracing.LevelError)
+	defer teardown()
+	//
+	node := (&xnode{}).add("1", "2", "3", "4", "5", "6", "7", "8", "9")
+	found, at := node.findSlot("7")
+	if !found || at != 6 {
+		t.Logf("found = %v, at = %d", found, at)
+		t.Error("1: expected findSlot to find 7 at position 6, didn't")
+	}
+	node = (&xnode{}).add("1", "2", "3", "4", "5", "6", "8", "9")
+	found, at = node.findSlot("7")
+	if found || at != 6 {
+		t.Logf("found = %v, at = %d", found, at)
+		t.Error("2: expected findSlot to find empty slot for 7 at position 6, didn't")
+	}
+	node = &xnode{}
+	found, at = node.findSlot("7")
+	if found || at != 0 {
+		t.Logf("found = %v, at = %d", found, at)
+		t.Error("3: expected empty.findSlot to find empty slot for 7 at position 0, didn't")
+	}
+	node = (&xnode{}).add("1", "2", "3", "4", "5", "6")
+	found, at = node.findSlot("7")
+	if found || at != 6 {
+		t.Logf("found = %v, at = %d", found, at)
+		t.Error("4: expected findSlot to find empty slot for 7 at final position 6, didn't")
+	}
+}
+
+// --- Paths -----------------------------------------------------------------
+
+func TestInternalPathFold(t *testing.T) {
+	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	defer teardown()
+	//
+	var path slotPath = make([]slot, 3)
+	node1 := xnode{}.withInsertedItem(xitem{"1", 1}, 0)
+	path[0] = slot{node: &node1, index: 0}
+	node2 := xnode{}.withInsertedItem(xitem{"2", 2}, 0)
+	path[1] = slot{node: &node2, index: 0}
+	node3 := xnode{}.withInsertedItem(xitem{"3", 3}, 0)
+	path[2] = slot{node: &node3, index: 0}
+	//t.Logf("path = %v", path)
+	node4 := xnode{}.withInsertedItem(xitem{"4", 4}, 0)
+	zero := slot{node: &node4, index: 0}
+	result := path.foldR(func(p, ch slot) slot {
+		sum := p.item().value.(int) + ch.item().value.(int)
+		//t.Logf("%2d <- p = %v, ch = %v", sum, p, ch)
+		node := xnode{}.withInsertedItem(xitem{"sum", sum}, 0)
+		return slot{node: &node, index: 0}
+	}, zero)
+	if result.item().value.(int) != 10 {
+		t.Logf("result of fold %v, %v = %v", path, zero.item(), result.item())
+		t.Error("expected result of path.fold(+, 4) to be 10, isn't")
 	}
 }
