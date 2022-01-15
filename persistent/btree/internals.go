@@ -48,7 +48,7 @@ func (tree Tree) findKeyAndPath(key K, pathBuf slotPath) (found bool, path slotP
 	var index int
 	var node *xnode = tree.root // walking nodes, start search at the top
 	for !node.isLeaf() {
-		tracer().Debugf("node = %v", node)
+		tracer().Debugf("finding inner node = %v", node)
 		found, index = node.findSlot(key)
 		path = append(path, slot{node: node, index: index})
 		if found {
@@ -56,16 +56,16 @@ func (tree Tree) findKeyAndPath(key K, pathBuf slotPath) (found bool, path slotP
 		}
 		node = node.children[index]
 	}
-	tracer().Debugf("node = %v", node)
+	tracer().Debugf("finding leaf node %v", node)
 	found, index = node.findSlot(key)
 	path = append(path, slot{node: node, index: index})
-	tracer().Debugf("slot path for key=%v -> %s", key, path)
+	tracer().Debugf("slot path for key = %v -> %s", key, path)
 	return
 }
 
 func (tree Tree) replacing(key K, value T, path slotPath) (newTree Tree) {
 	assertThat(len(path) > 0, "cannot replace item without path")
-	tracer().Debugf("btree.With: slot path = %s", path)
+	tracer().Debugf("replace: slot path = %s", path)
 	hit := path[len(path)-1] // slot where `key` lives
 	item := xitem{key: key, value: value}
 	cow := hit.node.withReplacedValue(item, hit.index)
@@ -104,6 +104,8 @@ func (node xnode) withReplacedValue(item xitem, at int) xnode {
 
 func (node xnode) withDeletedItem(at int) xnode {
 	assertThat(at <= len(node.items), "given item index out of range: %d < %d", len(node.items), at)
+	tracer().Debugf("deletion in node at %d", at)
+	tracer().Debugf("            node = %s", node)
 	cow := node.clone()
 	cow.items = append(cow.items[:at], cow.items[at+1:]...)
 	if !cow.isLeaf() {
@@ -115,17 +117,20 @@ func (node xnode) withDeletedItem(at int) xnode {
 
 func (node xnode) withInsertedItem(item xitem, at int) xnode {
 	assertThat(at <= len(node.items), "given item index out of range: %d < %d", len(node.items), at)
-	cap := max(at+1, len(node.items))
+	cap := max(at+1, len(node.items)+1)
 	cow := node.cloneWithCapacity(cap) // change-on-write behaviour requires copying
 	if at == len(node.items) {         // append at the end
 		cow.items = append(cow.items, item)
+		if !cow.isLeaf() {
+			cow.children = append(cow.children, nil) // append placeholder
+		}
 		return cow
 	}
 	cow.items = append(cow.items[:at], item)
-	cow.items = append(cow.items, cow.items[at:]...)
+	cow.items = append(cow.items, node.items[at:]...)
 	if !cow.isLeaf() {
-		cow.children = append(cow.children[:at+1], nil)
-		cow.children = append(cow.children, cow.children[at:]...)
+		cow.children = append(cow.children[:at+1], nil) // insert placeholder
+		cow.children = append(cow.children, node.children[at:]...)
 	}
 	return cow
 }
@@ -203,7 +208,7 @@ func (node xnode) slice(from, to int) xnode {
 	if to-from <= 0 {
 		return xnode{}
 	}
-	size := from - to
+	size := to - from
 	s := xnode{items: make([]xitem, size, ceiling(size))}
 	copy(s.items, node.items[from:to])
 	if len(node.children) > 0 {
@@ -231,7 +236,7 @@ func (node *xnode) findSlot(key K) (bool, int) {
 	slotinx := sort.Search(itemcnt, func(i int) bool {
 		return items[i].key >= k // sort.Search will find the smallest i for which this is true
 	})
-	tracer().Debugf("slot index ∈ %v = %d", items, slotinx)
+	//tracer().Debugf("slot index ∈ %v = %d", items, slotinx)
 	return slotinx < itemcnt && k == items[slotinx].key, slotinx
 }
 
@@ -243,15 +248,17 @@ func (node *xnode) findSlot(key K) (bool, int) {
 //
 // It's legal to pass in xnode{} as node (in order to create a new Tree.root).
 //
-func (node xnode) splitChild(s slot) slot {
-	child := s.node
-	half := len(node.items) / 2
-	medianxitem := child.items[half]
-	siblingL := node.slice(0, half)
-	siblingR := node.slice(half+1, -1)
-	found, index := node.findSlot(K(medianxitem.key))
+func (node xnode) splitChild(ch slot) slot {
+	child := ch.node
+	half := len(child.items) / 2
+	miditem := child.items[half]
+	siblingL := child.slice(0, half)
+	siblingR := child.slice(half+1, -1)
+	tracer().Debugf("split: med = %v, len(L) = %d, len(R) = %d", miditem, len(siblingL.items), len(siblingR.items))
+	found, index := node.findSlot(miditem.key)
 	assertThat(!found, "internal inconsistency: child has same key as parent (during split)")
-	cow := node.withInsertedItem(medianxitem, index).asNonLeaf()
+	cow := node.withInsertedItem(miditem, index).asNonLeaf()
+	tracer().Debugf("split: parent is now %s", cow)
 	cow.children[index] = &siblingL
 	cow.children[index+1] = &siblingR
 	return slot{node: &cow, index: index}
@@ -296,14 +303,25 @@ func (parent slot) balance(child slot, lowWaterMark uint) slot {
 		return parent.rotateLeft(child, parent.rightSibling(child))
 	}
 	// steal item from parent and merge with a sibling
-	return parent.merge(parent.siblings2(child))
+	siblings, delinx := parent.siblings2(child)
+	return parent.merge(siblings, delinx)
 }
 
 // merge steals an item from parent and merges child with a sibling.
 // Returns a new parent which may be underfull or even empty (in case of parent being root).
-func (parent slot) merge(siblings [2]slot) slot {
+//
+// siblings is the pair of slots to merge. child is one of this pair, and we need it to
+// know which item of the parent to extract.
+func (parent slot) merge(siblings [2]slot, delinx int) slot {
 	assertThat(parent.len() > 0, "attempt to extract an item from an empty parent node")
-	cow := parent.node.withDeletedItem(parent.index)
+	tracer().Debugf("merge: parent = %s", parent)
+	tracer().Debugf("       sibling L = %s", siblings[0])
+	tracer().Debugf("       sibling R = %s", siblings[1])
+	// we need to know if parent.index is ok, or one of its neighbors
+	// TODO
+	parent.index = delinx
+	cow := parent.node.withDeletedItem(delinx)
+	//cow := parent.node.withDeletedItem(parent.index)
 	newParent := slot{node: &cow, index: parent.index}
 	lsbl, rsbl := siblings[0], siblings[1] // rsbl may be slot{}, i.e. empty
 	cap := lsbl.len() + rsbl.len() + 1

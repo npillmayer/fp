@@ -5,6 +5,7 @@ go 1.18
 require (
 	github.com/npillmayer/schuko v0.2.0-alpha.3.0.20211209143531-2d524c4964ff
 	github.com/stretchr/testify v1.7.0
+	github.com/xlab/treeprint v1.1.0
 )
 
 require (

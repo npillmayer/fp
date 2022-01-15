@@ -44,17 +44,17 @@ func LowWaterMark(n int) Option {
 
 // --- API -------------------------------------------------------------------
 
-func (tree Tree) Find(key K) (bool, T) {
+func (tree Tree) Find(key K) (T, bool) {
 	var found bool
 	var path slotPath = make([]slot, tree.depth)
 	if found, path = tree.findKeyAndPath(key, path); found {
-		return true, path.last().item().value
+		return path.last().item().value, true
 	}
 	var none T
-	return false, none
+	return none, false
 }
 
-func (tree Tree) With(key K, value T) (newTree Tree) {
+func (tree Tree) With(key K, value T) Tree {
 	var path slotPath = make([]slot, tree.depth)
 	var found bool
 	if found, path = tree.findKeyAndPath(key, path); found {
@@ -63,7 +63,7 @@ func (tree Tree) With(key K, value T) (newTree Tree) {
 		}
 		return tree.replacing(key, value, path) // otherwise copy with replaced value
 	}
-	tracer().Debugf("btree.With: slot path = %s", path)
+	tracer().Debugf("insert: slot path = %s", path)
 	item := xitem{key, value}
 	if tree.root == nil { // virgin tree => insert first node and return
 		return tree.shallowCloneWithRoot(xnode{}.withInsertedItem(item, 0)).withDepth(1)
@@ -71,17 +71,16 @@ func (tree Tree) With(key K, value T) (newTree Tree) {
 	leafSlot := path.last()
 	assertThat(leafSlot.node.isLeaf(), "attempt to insert item at non-leaf")
 	cow := leafSlot.node.withInsertedItem(item, leafSlot.index) // copy-on-write
-	tracer().Debugf("created copy of bottom node: %#v", cow)
+	tracer().Debugf("insert: created copy of (leaf + key@%d) = %s", leafSlot.index, cow)
 	newRoot := path.dropLast().foldR(splitAndClone(tree.highWaterMark),
 		slot{node: &cow, index: leafSlot.index},
 	)
-	tracer().Debugf("with: top = %s", newRoot)
+	tracer().Debugf("insert: new root = %s", newRoot)
 	if newRoot.node.overfull(tree.highWaterMark) {
 		newRoot = xnode{}.splitChild(newRoot)
-		newTree.depth++
+		tree.depth++ // miss-use of tree for intermediate storage of new depth
 	}
-	newTree.root = newRoot.node
-	return
+	return tree.shallowCloneWithRoot(*newRoot.node)
 }
 
 func (tree Tree) WithDeleted(key K) Tree {
@@ -93,7 +92,7 @@ func (tree Tree) WithDeleted(key K) Tree {
 	tracer().Debugf("btree.WithDeleted: slot path = %s", path)
 	del := path.last()
 	cow := del.node.withDeletedItem(del.index) // copy-on-write
-	tracer().Debugf("created copy of node w/out deleted item: %#v", cow)
+	tracer().Debugf("created copy of node w/out deleted item: %#v", cow.items)
 	newRoot := path.dropLast().foldR(balance(tree.lowWaterMark),
 		slot{node: &cow, index: del.index},
 	)

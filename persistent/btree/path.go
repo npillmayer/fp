@@ -35,7 +35,7 @@ func (s slot) leftSibling(child slot) slot {
 }
 
 func (s slot) rightSibling(child slot) slot {
-	if s.node == nil || len(s.node.children) == 0 || s.index == len(s.node.children) {
+	if s.node == nil || len(s.node.children) == 0 || s.index == len(s.node.children)-1 {
 		return slot{}
 	}
 	assertThat(s.index <= len(s.node.children), "internal inconsistency: item index overflow")
@@ -45,12 +45,14 @@ func (s slot) rightSibling(child slot) slot {
 
 // siblings2 returns child and a non-void sibling as a correctly ordered pair.
 // If child is an only child, a pair with an empty right sibling will be returned.
-func (s slot) siblings2(child slot) (siblings [2]slot) {
+func (s slot) siblings2(child slot) (siblings [2]slot, delinx int) {
+	delinx = s.index - 1
 	sbl := s.leftSibling(child)
 	siblings[0], siblings[1] = sbl, child
 	if sbl.node == nil {
 		sbl = s.rightSibling(child)
 		siblings[0], siblings[1] = child, sbl
+		delinx++
 	}
 	assertThat(siblings[0].node != nil, "sibling-pair needs to have non-empty left sibling")
 	return

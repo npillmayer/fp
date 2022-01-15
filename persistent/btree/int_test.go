@@ -31,18 +31,53 @@ func TestInternalCeiling(t *testing.T) {
 
 // --- Nodes -----------------------------------------------------------------
 
+func TestInternalNodeSlice(t *testing.T) {
+	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	defer teardown()
+	//
+	node := xnode{}
+	var keys = []K{"1", "2", "3", "4", "5"}
+	cap := ceiling(len(keys))
+	node.items = make([]xitem, len(keys), cap)
+	node.children = make([]*xnode, len(keys), cap)
+	grandson := &xnode{}
+	for i := 0; i < len(keys); i++ {
+		node.items[i] = xitem{key: keys[i], value: string(keys[i])}
+		node.children[i] = grandson
+	}
+	var slices = []struct{ f, t, l int }{ // from, to, length
+		{f: 0, t: 0, l: 0},
+		{f: 0, t: 2, l: 2},
+		{f: 0, t: 5, l: 5},
+		{f: 2, t: 4, l: 2},
+		{f: 2, t: 2, l: 0},
+		{f: 5, t: 5, l: 0},
+		{f: 2, t: -1, l: 3},
+	}
+	for i, x := range slices {
+		s := node.slice(x.f, x.t)
+		if len(s.items) != x.l {
+			t.Logf("node = %s, slice(%d,%d) = %s", node, x.f, x.t, s)
+			t.Errorf("%d: expected items slice of length = %d, have %d", i, x.l, len(s.items))
+		}
+		if len(s.children) != x.l {
+			t.Errorf("%d: expected children slice of length = %d, have %d", i, x.l, len(s.items))
+		}
+	}
+}
+
 func TestInternalNodeInsert(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
 	defer teardown()
 	//
-	node := xnode{}.withInsertedItem(xitem{key: "1", value: 1}, 0)
+	node := xnode{}.withInsertedItem(xitem{key: "1", value: "1"}, 0)
 	if len(node.items) != 1 {
 		t.Errorf("expected item count of node to be 1, is %d", len(node.items))
 	}
 	if cap(node.items) != ceiling(1) {
 		t.Errorf("expected node-capacity to be %d, is %d", ceiling(1), cap(node.items))
 	}
-	node = node.withInsertedItem(xitem{key: "3", value: 3}, 1)
+	node = node.withInsertedItem(xitem{key: "3", value: "3"}, 1)
 	if len(node.items) != 2 {
 		t.Errorf("expected item count of node to be 2, is %d", len(node.items))
 	}
@@ -52,6 +87,22 @@ func TestInternalNodeInsert(t *testing.T) {
 	if node.items[0].key != "1" {
 		t.Logf("node = %s", node)
 		t.Errorf("expected item 0 to be 1, is %v", node.items[0])
+	}
+	node = node.withInsertedItem(xitem{key: "7", value: "7"}, 1)
+	if len(node.items) != 3 {
+		t.Fatalf("expected item count of node to be 3, is %d", len(node.items))
+	}
+	if cap(node.items) != ceiling(3) {
+		t.Logf("node = %s", node)
+		t.Errorf("expected node-capacity to be %d, is %d", ceiling(3), cap(node.items))
+	}
+	if node.items[1].key != "7" {
+		t.Logf("node = %s", node)
+		t.Errorf("expected item 1 to be 7, is %v", node.items[1])
+	}
+	if node.items[2].key != "3" {
+		t.Logf("node = %s", node)
+		t.Errorf("expected item 2 to be 3, is %v", node.items[2])
 	}
 }
 
@@ -76,7 +127,7 @@ func TestInternalNodeDeleteItem(t *testing.T) {
 	node = node.withInsertedItem(xitem{key: "5", value: 5}, 2)
 	node = node.withDeletedItem(1)
 	if node.items[1].value != 5 {
-		t.Errorf("expected item.1.value to be 5, is %v", node.items[0])
+		t.Errorf("expected item[1].value to be 5, is %v", node.items[0])
 	}
 	if len(node.items) != 2 {
 		t.Errorf("expected node to have 2 items, has %v", len(node.items))
