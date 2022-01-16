@@ -89,14 +89,32 @@ func (tree Tree) WithDeleted(key K) Tree {
 	if found, path = tree.findKeyAndPath(key, path); !found {
 		return tree // no need for modification
 	}
-	tracer().Debugf("btree.WithDeleted: slot path = %s", path)
+	tracer().Debugf("deletion: slot path = %s", path)
 	del := path.last()
-	cow := del.node.withDeletedItem(del.index) // copy-on-write
-	tracer().Debugf("created copy of node w/out deleted item: %#v", cow.items)
+	var cowLeaf xnode
+	var leafSlot slot
+	if del.node.isLeaf() {
+		cow := del.node.withDeletedItem(del.index) // copy-on-write
+		tracer().Debugf("created copy of leaf w/out deleted item: %v", cow.items)
+		leafSlot = slot{node: &cow, index: del.index}
+	} else { // for inner node:
+		// swap item with rightmost item of left subtree or leftmost item of right subtree
+		cow := del.node.clone()                                            // cow is clone of inner node
+		path[len(path)-1].node = &cow                                      // remember clone in path
+		leafItem, leafPath := del.stealPredOrSucc(path, tree.lowWaterMark) // from left or right subtree
+		cow.items[del.index] = leafItem                                    // insert stolen item
+		l := leafPath.last()                                               //
+		cowLeaf = l.node.withDeletedItem(l.index)                          // remove stolen item from leaf
+		path = leafPath                                                    // continue with path from root to leaf
+		leafSlot = slot{node: &cowLeaf, index: l.index}
+	}
+	// balance from leaf-node upwards, starting at the leaf where we deleted an item
+	tracer().Debugf("after delete: path = %v", path)
 	newRoot := path.dropLast().foldR(balance(tree.lowWaterMark),
-		slot{node: &cow, index: del.index},
+		leafSlot,
+		//slot{node: &cowLeaf, index: del.index},
 	)
-	tracer().Debugf("with: top = %s", newRoot)
+	tracer().Debugf("deletion: new root = %s", newRoot)
 	newTree := tree.shallowCloneWithRoot(*newRoot.node)
 	switch { // catch border cases where root is empty after deletion
 	case newRoot.len() == 0 && newRoot.node.children[0] != nil:

@@ -251,7 +251,7 @@ func TestTreeDeleteAndMerge(t *testing.T) {
 
 func TestTreeDeleteInnerItem(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
-	tracer().SetTraceLevel(tracing.LevelError)
+	//tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
 	tree := createTreeForTest()

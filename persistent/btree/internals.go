@@ -63,6 +63,65 @@ func (tree Tree) findKeyAndPath(key K, pathBuf slotPath) (found bool, path slotP
 	return
 }
 
+// stealPredOrSucc searches the left and/or right sub-tree of s, returning a path to a
+// leaf node, which is either the predecessor or the successor of s.
+//
+// Not pure: modifies pathBuf. pathBuf may not be invalid, but rather must be a buffer
+// from an earlier call to `findKeyAndPath(…)`.
+func (s slot) stealPredOrSucc(pathBuf slotPath, lowWaterMark uint) (item xitem, path slotPath) {
+	assertThat(pathBuf != nil && len(pathBuf) > 0 && cap(pathBuf) > len(pathBuf), "invalid path buffer")
+	tracer().Debugf("parent = %s, path.last = %s", s, pathBuf.last())
+	//assertThat(pathBuf.last().node == s.node, "need path with parent as last node")
+	path = pathBuf
+	pinx := len(path) - 1
+	var found bool
+	found, path = s.findSucc(path)
+	if found && len(path.last().node.items) >= int(lowWaterMark) {
+		path[pinx].index++
+	} else {
+		path = pathBuf
+		path = s.findPred(path)
+	}
+	tracer().Debugf("slot path to steal -> %s", path)
+	return path.last().item(), path
+}
+
+// Not pure: modifies pathBuf.
+func (s slot) findPred(pathBuf slotPath) slotPath {
+	path := pathBuf
+	node := s.node.children[s.index]
+	for !node.isLeaf() {
+		tracer().Debugf("find pred: visiting inner node = %v", node)
+		path = append(path, slot{node: node, index: len(node.items)})
+		node = node.children[len(node.children)-1]
+		assertThat(node != nil, "right-most child of inner node is missing")
+	}
+	tracer().Debugf("find pred: visiting leaf node = %v", node)
+	path = append(path, slot{node: node, index: len(node.items) - 1})
+	tracer().Debugf("slot path for pred -> %s", path)
+	return path
+}
+
+// Not pure: modifies pathBuf.
+func (s slot) findSucc(pathBuf slotPath) (bool, slotPath) {
+	assertThat(s.index < len(s.node.items), "inner node has no right child")
+	// if s.index == len(s.node.items) {
+	// 	return false, pathBuf
+	// }
+	path := pathBuf
+	assertThat(len(s.node.children) >= s.index+1, "right-most child of inner node is missing")
+	node := s.node.children[s.index+1]
+	for !node.isLeaf() {
+		tracer().Debugf("find succ: visiting inner node = %v", node)
+		path = append(path, slot{node: node, index: 0})
+		node = node.children[0]
+	}
+	tracer().Debugf("find succ: visiting leaf node = %v", node)
+	path = append(path, slot{node: node, index: 0})
+	tracer().Debugf("slot path for succ -> %s", path)
+	return true, path
+}
+
 func (tree Tree) replacing(key K, value T, path slotPath) (newTree Tree) {
 	assertThat(len(path) > 0, "cannot replace item without path")
 	tracer().Debugf("replace: slot path = %s", path)
@@ -104,14 +163,14 @@ func (node xnode) withReplacedValue(item xitem, at int) xnode {
 
 func (node xnode) withDeletedItem(at int) xnode {
 	assertThat(at <= len(node.items), "given item index out of range: %d < %d", len(node.items), at)
-	tracer().Debugf("deletion in node at %d", at)
-	tracer().Debugf("            node = %s", node)
+	tracer().Debugf("deletion in node %s at %d", node, at)
 	cow := node.clone()
 	cow.items = append(cow.items[:at], cow.items[at+1:]...)
 	if !cow.isLeaf() {
 		cow.children = append(cow.children[:at], cow.children[at+1:]...)
 	}
-	tracer().Debugf("after node.delete(item): len=%d, cap=%d", len(cow.items), cap(cow.items))
+	tracer().Debugf("after node.delete(%v): len=%d, cap=%d -> %s", node.items[at].key,
+		len(cow.items), cap(cow.items), cow)
 	return cow
 }
 
