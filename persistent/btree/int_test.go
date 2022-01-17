@@ -206,6 +206,20 @@ func TestInternalFindSlot(t *testing.T) {
 	}
 }
 
+func TestInternalLocate(t *testing.T) {
+	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	//tracer().SetTraceLevel(tracing.LevelError)
+	defer teardown()
+	//
+	tree := createTreeForTest()
+	path, found := tree.locate(6, find, nil)
+	//
+	if !found {
+		t.Logf("found = %v, path = %s", found, path)
+		t.Error("expected to find key 6 in tree, didn't")
+	}
+}
+
 // --- Paths -----------------------------------------------------------------
 
 func TestInternalPathFold(t *testing.T) {

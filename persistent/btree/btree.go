@@ -4,7 +4,7 @@ package btree
 Remarks:
 --------
 
-- 'cow' stands for copy-on-write and is used throughout the code for variable holding clones of nodes.
+- 'cow' stands for copy-on-write and is used throughout the code for variables holding clones of nodes.
 
 - We use a programming-style reminiscent of functional programming (see remarks on
   re-balancing) where it makes things easier to understand.
@@ -80,6 +80,55 @@ func (tree Tree) Find(key K) (T, bool) {
 	}
 	var none T
 	return none, false
+}
+
+type Comparator func(key, itemKey, agg K) (int, K)
+
+func find(key, itemKey, agg K) (int, K) {
+	tracer().Debugf("find: f(key=%v, item.key=%v, agg=%v)", key, itemKey, agg)
+	if key == itemKey {
+		return 0, agg
+	}
+	if key < itemKey {
+		return -1, agg
+	}
+	agg += key
+	return +1, agg
+}
+
+func (tree Tree) locate(key K, f Comparator, pathBuf slotPath) (slotPath, bool) {
+	path := pathBuf[:0] // we track the path to the key's slot
+	if tree.root == nil {
+		return path, false
+	}
+	var agg K
+	var node *xnode = tree.root // walking nodes, start search at the top
+	for !node.isLeaf() {
+		tracer().Debugf("finding inner node = %v", node)
+		cmp, index := checkNode(node, key, agg, f)
+		path = append(path, slot{node: node, index: index})
+		if cmp == 0 {
+			return path, true
+		}
+		node = node.children[index]
+	}
+	tracer().Debugf("finding leaf node %v", node)
+	cmp, index := checkNode(node, key, agg, f)
+	path = append(path, slot{node: node, index: index})
+	tracer().Debugf("locate: slot path = %s", path)
+	return path, cmp == 0
+}
+
+func checkNode(node *xnode, key, agg K, f Comparator) (cmp, index int) {
+	for index = 0; index < len(node.items); index++ {
+		item := node.items[index]
+		cmp, agg = f(key, item.key, agg)
+		tracer().Debugf("f(%v,%v,%v) -> %v | %v", key, item.key, agg, agg, cmp)
+		if cmp <= 0 {
+			break
+		}
+	}
+	return
 }
 
 // With returns a copy of a tree with a new key inserted, which is associated with `value`.

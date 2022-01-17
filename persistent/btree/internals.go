@@ -10,7 +10,7 @@ import (
 Remarks:
 --------
 
-- 'cow' stands for copy-on-write and is used throughout the code for variable holding clones of nodes.
+- 'cow' stands for copy-on-write and is used throughout the code for variables holding clones of nodes.
 
 - We use a programming-style reminiscent of functional programming (see remarks on
   re-balancing) where it makes things easier to understand.
@@ -266,6 +266,8 @@ func (node xnode) underfull(lowWater uint) bool {
 	return len(node.items) < int(lowWater)
 }
 
+// findSlot searches a key within the items of node.
+// Returns the correct index for key, and found=true, if found exactly.
 func (node *xnode) findSlot(key K) (bool, int) {
 	items, itemcnt := node.items, len(node.items)
 	k := key
