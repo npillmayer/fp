@@ -30,10 +30,6 @@ func (s slot) leftSibling(child slot) slot {
 		return slot{}
 	}
 	assertThat(s.index <= len(s.node.children), "internal inconsistency: item index overflow")
-	// index := s.index
-	// if s.node.children[s.index] != child.node {
-	// 	index++
-	// }
 	lsib := s.node.children[s.index-1]
 	tracer().Debugf("left sibling of %s = %s, index in parent is %d", child, lsib, s.index-1)
 	return slot{node: lsib, index: len(lsib.items)}
@@ -43,36 +39,24 @@ func (s slot) rightSibling(child slot) slot {
 	if s.node == nil || len(s.node.children) == 0 || s.index >= len(s.node.children)-1 {
 		return slot{}
 	}
-	// index := s.index
-	// if s.node.children[s.index] != child.node {
-	// 	index++
-	// }
-	// assertThat(index <= len(s.node.children), "internal inconsistency: item index overflow")
-	// if index == len(s.node.children) {
-	// 	return slot{}
-	// }
 	rsib := s.node.children[s.index+1]
 	tracer().Debugf("right sibling of %s = %s, index in parent is %d", child, rsib, s.index+1)
 	return slot{node: rsib, index: len(rsib.items)}
 }
 
-// mergeinfo is an ad-hoc tuple for merging tree nodes
+// mergeinfo is an ad-hoc tuple for merging tree nodes. It points to the parent node, together
+// with its two child nodes to be merged.
 type mergeinfo struct {
 	parent slot
 	left   slot
 	right  slot
 }
 
-// siblings2 returns child and a non-void sibling as a correctly ordered pair.
+// siblings2 returns child and a sibling (either left or right) as a correctly ordered pair.
 // If child is an only child, a pair with an empty right sibling will be returned.
 func (s slot) siblings2(child slot) mergeinfo {
 	assertThat(!s.node.isLeaf(), "attempt to find siblings for leaf")
 	assertThat(s.index < len(s.node.children), "internal inconsistency: child index overflow")
-	index := s.index
-	if s.node.children[s.index] != child.node {
-		index++
-	}
-	assertThat(s.node.children[s.index] != child.node, "cannot locate child of parent")
 	tracer().Debugf("siblings2: parent %s has %d children", s, len(s.node.children))
 	mi := mergeinfo{parent: s}
 	sbl := s.leftSibling(child)

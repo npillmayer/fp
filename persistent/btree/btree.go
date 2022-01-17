@@ -33,11 +33,13 @@ func Immutable(opts ...Option) Tree {
 
 type Option func(Tree) Tree
 
-func LowWaterMark(n int) Option {
+// Degree sets the minimum number of children a node in the tree owns.
+// The lower bound for the degree is 3.
+func Degree(n int) Option {
 	return func(tree Tree) Tree {
-		nodesize := ceiling(max(3, n))
-		tree.lowWaterMark = uint(nodesize<<2) - 1
-		tree.highWaterMark = uint(nodesize) - 2
+		low := max(2, n-1)
+		tree.lowWaterMark = uint(low)
+		tree.highWaterMark = uint(ceiling(int(tree.lowWaterMark)*2)) - 2
 		return tree
 	}
 }
@@ -106,13 +108,12 @@ func (tree Tree) WithDeleted(key K) Tree {
 		l := leafPath.last()                                               //
 		cowLeaf = l.node.withDeletedItem(l.index)                          // remove stolen item from leaf
 		path = leafPath                                                    // continue with path from root to leaf
-		leafSlot = slot{node: &cowLeaf, index: l.index}
+		leafSlot = slot{node: &cowLeaf, index: l.index}                    // leaf to start balancing
 	}
 	// balance from leaf-node upwards, starting at the leaf where we deleted an item
 	tracer().Debugf("after delete: path = %v", path)
 	newRoot := path.dropLast().foldR(balance(tree.lowWaterMark),
 		leafSlot,
-		//slot{node: &cowLeaf, index: del.index},
 	)
 	tracer().Debugf("deletion: new root = %s", newRoot)
 	newTree := tree.shallowCloneWithRoot(*newRoot.node)

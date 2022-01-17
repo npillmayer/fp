@@ -9,13 +9,23 @@ import (
 	tp "github.com/xlab/treeprint"
 )
 
+func TestTreeCreateEmptyTree(t *testing.T) {
+	tree := Immutable(Degree(2))
+	if tree.lowWaterMark != 2 || tree.highWaterMark != 6 {
+		t.Logf("empty tree =\n%s", printTree(tree))
+		t.Error("expected empty tree to have water marks 2 | 6, hasn't")
+	}
+}
+
 func TestTreeCreateTreeForTest(t *testing.T) {
 	tree := createTreeForTest()
 	if tree.root == nil {
 		t.Error("cannot create tree for test")
 	}
-	s := printTree(tree)
-	t.Logf("tree for tests =\n%s", s)
+	t.Logf("tree for tests =\n%s", printTree(tree))
+	if tree.lowWaterMark != defaultLowWaterMark || tree.highWaterMark != defaultHighWaterMark {
+		t.Error("expected test tree to have default water marks, hasn't")
+	}
 }
 
 func TestTreeFindPathInEmptyTree(t *testing.T) {
@@ -251,20 +261,20 @@ func TestTreeDeleteAndMerge(t *testing.T) {
 
 func TestTreeDeleteInnerItem(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
-	//tracer().SetTraceLevel(tracing.LevelError)
+	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
 	tree := createTreeForTest()
-	t.Logf("tree =\n%s", printTree(tree))
 	tree = tree.WithDeleted("5")
 	if tree.depth != 2 {
 		t.Logf("tree =\n%s", printTree(tree))
 		t.Errorf("expected tree to have depth=2, has %d", tree.depth)
 	}
-	t.Logf("tree =\n%s", printTree(tree))
-	if len(tree.root.children) < 3 {
-		t.Fatalf("TODO think about this case")
+	if len(tree.root.children) != 2 {
+		t.Logf("tree =\n%s", printTree(tree))
+		t.Fatalf("expected child 1 and 2 of root to be merged, haven't")
 	}
+	//t.Logf("tree =\n%s", printTree(tree))
 }
 
 // ---------------------------------------------------------------------------
@@ -290,7 +300,7 @@ func createTreeForTest() Tree { // tree with values 0…9, without 7
 		root:          root,
 		depth:         2,
 		lowWaterMark:  defaultLowWaterMark,
-		highWaterMark: defaultHighWaterMark * 2,
+		highWaterMark: defaultHighWaterMark,
 	}
 }
 
