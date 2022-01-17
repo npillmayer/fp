@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-type K string      // TODO change to type parameter, ordered
+type K int         // TODO change to type parameter, ordered
 type T interface{} // TODO change to type parameter, comparable
 
 type xitem struct {

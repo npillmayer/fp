@@ -3,9 +3,6 @@ package btree
 /*
 TODOs:
 
-- manage sizes of node.items and node.children correctly
-- check for safe handling of empty nodes, especially root
-- manage XTree.depth correctly after split or merge
 - replace K and T with generic types for Go 1.18
 */
 

@@ -2,6 +2,7 @@ package btree
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/npillmayer/schuko/tracing"
@@ -33,9 +34,9 @@ func TestTreeFindPathInEmptyTree(t *testing.T) {
 	defer teardown()
 	//
 	tree := Tree{}
-	_, path := tree.findKeyAndPath("7", nil)
+	_, path := tree.findKeyAndPath(7, nil)
 	if len(path) > 0 {
-		t.Errorf("expected path for '7' to be nil, is %v", path)
+		t.Errorf("expected path for 7 to be nil, is %v", path)
 	}
 }
 
@@ -45,7 +46,7 @@ func TestTreeFindKeyAndPath(t *testing.T) {
 	defer teardown()
 	//
 	tree := createTreeForTest()
-	found, path := tree.findKeyAndPath("9", nil)
+	found, path := tree.findKeyAndPath(9, nil)
 	if !found {
 		t.Logf("path = %v", path)
 		t.Error("expected to have found item with key=9, didn't")
@@ -67,7 +68,7 @@ func TestTreeFindInEmptyTree(t *testing.T) {
 	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
-	v, found := Tree{}.Find("7")
+	v, found := Tree{}.Find(7)
 	if found {
 		t.Error("did not expect to find '7' in empty tree")
 	}
@@ -82,13 +83,12 @@ func TestTreeFindInTree(t *testing.T) {
 	defer teardown()
 	//
 	tree := createTreeForTest()
-	v, found := tree.Find("8")
+	v, found := tree.Find(8)
 	if !found {
 		t.Error("expected to find '8' in tree, didn't")
 	}
-	var eight K = "8"
-	if v.(K) != eight {
-		t.Errorf("expected value for '8' in empty tree to be %#v, is %#v", eight, v)
+	if v != "8" {
+		t.Errorf("expected value for '8' in empty tree to be %#v, is %#v", "8", v)
 	}
 }
 
@@ -99,7 +99,7 @@ func TestTreeInsertInEmptyTree(t *testing.T) {
 	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
-	tree := Tree{}.With("7", 7)
+	tree := Tree{}.With(7, "7")
 	if tree.root == nil {
 		t.Fatalf("expected to have tree.With(…) to have a root, hasn't:\n%#v", tree)
 	}
@@ -118,7 +118,7 @@ func TestTreeInsertTwiceInEmptyTree(t *testing.T) {
 	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
-	tree := Tree{}.With("7", 7)
+	tree := Tree{}.With(7, "7")
 	if tree.root == nil {
 		t.Fatalf("expected to have tree.With(…) to have a root, hasn't:\n%#v", tree)
 	}
@@ -129,7 +129,7 @@ func TestTreeInsertTwiceInEmptyTree(t *testing.T) {
 	if tree.lowWaterMark != defaultLowWaterMark {
 		t.Errorf("expected tree to have low water mark of %d, has %d", defaultLowWaterMark, tree.lowWaterMark)
 	}
-	tree = tree.With("3", 3)
+	tree = tree.With(3, "3")
 	if tree.root == nil {
 		t.Fatalf("expected to have tree.With(…) to have a root, hasn't:\n%#v", tree)
 	}
@@ -145,7 +145,7 @@ func TestTreeInsertInLeaf(t *testing.T) {
 	defer teardown()
 	//
 	tree := createTreeForTest()
-	tree = tree.With("7", "7")
+	tree = tree.With(7, "7")
 	if tree.root == nil {
 		t.Fatalf("expected to have tree.With(…) to have a root, hasn't:\n%#v", tree)
 	}
@@ -163,7 +163,7 @@ func TestTreeInsertInLeaf(t *testing.T) {
 	if ch2 == nil || len(ch2.items) != 4 {
 		t.Logf("tree = %s", printTree(tree))
 		t.Fatalf("expected node root->2 to be of length=4, isn't")
-	} else if ch2.items[1].key != K("7") {
+	} else if ch2.items[1].key != K(7) {
 		t.Logf("tree = %s", printTree(tree))
 		t.Errorf("expected inserted item[1] to have key=7, is %#v", ch2.items[2])
 	}
@@ -176,8 +176,8 @@ func TestTreeInsertWithSplit(t *testing.T) {
 	//
 	tree := createTreeForTest()
 	tree.highWaterMark = 4
-	tree = tree.With("7", "7")
-	tree = tree.With("99", "99") // should trigger overfull(highWaterMark) -> split
+	tree = tree.With(7, "7")
+	tree = tree.With(99, "99") // should trigger overfull(highWaterMark) -> split
 	if tree.root == nil || tree.depth != 2 {
 		t.Logf("tree = %s", printTree(tree))
 		t.Fatalf("unexpected tree shape after insert of 7 and 99")
@@ -190,7 +190,7 @@ func TestTreeInsertWithSplit(t *testing.T) {
 	if ch4 == nil || len(ch4.items) != 2 {
 		t.Logf("tree = %s", printTree(tree))
 		t.Fatalf("expected node root->child.3 to be of length=2, isn't")
-	} else if ch4.items[1].key != K("99") {
+	} else if ch4.items[1].key != K(99) {
 		t.Logf("tree = %s", printTree(tree))
 		t.Errorf("expected inserted child.3.item[1] to have key=7, is %#v", ch4.items[1])
 	}
@@ -203,7 +203,7 @@ func TestTreeDeleteFromEmptyTree(t *testing.T) {
 	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
-	tree := Tree{}.WithDeleted("7")
+	tree := Tree{}.WithDeleted(7)
 	if tree.root != nil {
 		t.Logf("tree = %#v", tree)
 		t.Logf("tree =\n%s", printTree(tree))
@@ -221,9 +221,9 @@ func TestTreeDeleteInsertedKeyFromLeaf(t *testing.T) {
 	//
 	tree := createTreeForTest()
 	//t.Logf("tree = %s", printTree(tree))
-	modified := tree.With("7", "7")
+	modified := tree.With(7, "7")
 	//t.Logf("tree = %s", printTree(modified))
-	modified = modified.WithDeleted("7")
+	modified = modified.WithDeleted(7)
 	orig := printTree(tree)
 	mod := printTree(modified)
 	if orig != mod {
@@ -239,7 +239,7 @@ func TestTreeDeleteAndMerge(t *testing.T) {
 	//
 	tree := createTreeForTest()
 	//t.Logf("tree =\n%s", printTree(tree))
-	tree = tree.WithDeleted("9")
+	tree = tree.WithDeleted(9)
 	if tree.depth != 2 {
 		t.Logf("tree =\n%s", printTree(tree))
 		t.Errorf("expected tree to have depth=2, has %d", tree.depth)
@@ -253,7 +253,7 @@ func TestTreeDeleteAndMerge(t *testing.T) {
 		t.Logf("tree =\n%s", printTree(tree))
 		t.Fatalf("expected right child to have 5 items, has %d", len(ch[1].items))
 	}
-	if ch[1].items[2].key != "5" {
+	if ch[1].items[2].key != 5 {
 		t.Logf("tree =\n%s", printTree(tree))
 		t.Fatalf("expected right child to have middle item 5, has %v", ch[1].items[2].key)
 	}
@@ -265,7 +265,7 @@ func TestTreeDeleteInnerItem(t *testing.T) {
 	defer teardown()
 	//
 	tree := createTreeForTest()
-	tree = tree.WithDeleted("5")
+	tree = tree.WithDeleted(5)
 	if tree.depth != 2 {
 		t.Logf("tree =\n%s", printTree(tree))
 		t.Errorf("expected tree to have depth=2, has %d", tree.depth)
@@ -281,18 +281,18 @@ func TestTreeDeleteInnerItem(t *testing.T) {
 
 func createTreeForTest() Tree { // tree with values 0…9, without 7
 	root := &xnode{}
-	root.add("2", "5")
+	root.add(2, 5)
 
 	child0 := &xnode{}
-	child0.add("0", "1")
+	child0.add(0, 1)
 	root.children = append(root.children, child0)
 
 	child1 := &xnode{}
-	child1.add("3", "4")
+	child1.add(3, 4)
 	root.children = append(root.children, child1)
 
 	child2 := &xnode{}
-	child2.add("6", "8", "9") // 7 is missing
+	child2.add(6, 8, 9) // 7 is missing
 	root.children = append(root.children, child2)
 
 	//return newTreeWithRoot(root, minItems)
@@ -306,7 +306,7 @@ func createTreeForTest() Tree { // tree with values 0…9, without 7
 
 func (node *xnode) add(keys ...K) *xnode {
 	for _, key := range keys {
-		node.items = append(node.items, xitem{key, key})
+		node.items = append(node.items, xitem{key, T(strconv.Itoa(int(key)))})
 	}
 	return node
 }
