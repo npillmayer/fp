@@ -6,14 +6,30 @@ import (
 	"strings"
 )
 
-type K int         // TODO change to type parameter, ordered
-type T interface{} // TODO change to type parameter, comparable
+/*
+Remarks:
+--------
 
+- 'cow' stands for copy-on-write and is used throughout the code for variable holding clones of nodes.
+
+- We use a programming-style reminiscent of functional programming (see remarks on
+  re-balancing) where it makes things easier to understand.
+
+- A new modified incarnation of a tree always is reflected by a new tree.root.
+
+*/
+
+type K int         // TODO for generics: change to type parameter, ordered
+type T interface{} // TODO for generics: change to type parameter, comparable
+
+// xitem is a type for entries of the tree.
 type xitem struct {
 	key   K
 	value T
 }
 
+// xnode is a type for tree nodes, either an internal node or a leaf.
+// For leafs, children will be nil.
 type xnode struct {
 	items    []xitem
 	children []*xnode
@@ -94,6 +110,18 @@ func (node xnode) String() string {
 	return sb.String()
 }
 
+// A node holds a list of keys/value-pairs, called items. Internal nodes additionally hold a list
+// of children. For every modification a copy of a node is returned, modifications being
+//
+// - replacement of value
+// - deletion of item
+// - insertion of item
+// - left- or right-most item cut off
+//
+// All of these functions are straightforward.
+
+// withReplacedValue replaces the value at index `at` with item.value.
+// It returns a cloned node, containing the new value.
 func (node xnode) withReplacedValue(item xitem, at int) xnode {
 	assertThat(at <= len(node.items), "given item index out of range: %d < %d", len(node.items), at)
 	cow := node.clone()
@@ -102,6 +130,7 @@ func (node xnode) withReplacedValue(item xitem, at int) xnode {
 	return cow
 }
 
+// withDeletedItem returns a clone of node, where the item at index `at` has been removed.
 func (node xnode) withDeletedItem(at int) xnode {
 	assertThat(at <= len(node.items), "given item index out of range: %d < %d", len(node.items), at)
 	tracer().Debugf("deletion in node %s at %d", node, at)
@@ -115,10 +144,11 @@ func (node xnode) withDeletedItem(at int) xnode {
 	return cow
 }
 
+// withInserteditem returns a clone of node, where a new item at index `at` has been inserted.
 func (node xnode) withInsertedItem(item xitem, at int) xnode {
 	assertThat(at <= len(node.items), "given item index out of range: %d < %d", len(node.items), at)
 	cap := max(at+1, len(node.items)+1)
-	cow := node.cloneWithCapacity(cap) // change-on-write behaviour requires copying
+	cow := node.cloneWithCapacity(cap) // copy-on-write behaviour requires cloning
 	if at == len(node.items) {         // append at the end
 		cow.items = append(cow.items, item)
 		if !cow.isLeaf() {
@@ -135,6 +165,8 @@ func (node xnode) withInsertedItem(item xitem, at int) xnode {
 	return cow
 }
 
+// withCutRight returns a clone of node, with the rightmost item cut off.
+// If the node is a inner node, the rightmost child is cut off, too.
 func (node xnode) withCutRight() (xnode, xitem, *xnode) {
 	assertThat(len(node.items) > 0, "attempt to cut right item from empty node")
 	cow := node.clone()
@@ -148,6 +180,8 @@ func (node xnode) withCutRight() (xnode, xitem, *xnode) {
 	return cow, item, rchld
 }
 
+// withCutLeft returns a clone of node, with the leftmost item cut off.
+// If the node is a inner node, the leftmost child is cut off, too.
 func (node xnode) withCutLeft() (xnode, xitem, *xnode) {
 	assertThat(len(node.items) > 0, "attempt to cut left item from empty node")
 	cow := node.clone()
@@ -160,6 +194,8 @@ func (node xnode) withCutLeft() (xnode, xitem, *xnode) {
 	}
 	return cow, item, lchld
 }
+
+// --------------------
 
 func (node xnode) clone() xnode {
 	return node.cloneWithCapacity(0)
@@ -242,6 +278,20 @@ func (node *xnode) findSlot(key K) (bool, int) {
 
 // --- Splitting and balancing -----------------------------------------------
 
+/*
+B-trees need to be re-balanced after a modification leaves the tree in a state, where
+a tree-property is violated. For example, an insertion may procuduce an item-count for a node
+which exceeds the high water mark, making a split of this node necessary.
+
+We never do proactive re-balancing (which is described by some books about B-trees), but rather
+re-balance after modification.
+
+With immuatable persistent trees we need to make copies of all of the nodes affected by a
+“modification”. This usually creates clones for a path of nodes, starting at the root and
+ending at a leaf. Most of the children pointed to by each node will be unmodified, resulting
+in incarnations of the tree sharing most of the nodes.
+*/
+
 // splitChild splits an overfull child node.
 // It is not checked if the child is indeed overfull.
 // Returns a modified copy of node with 2 new children, where the left one substitues a child of node.
@@ -251,7 +301,7 @@ func (node *xnode) findSlot(key K) (bool, int) {
 func (node xnode) splitChild(ch slot) slot {
 	child := ch.node
 	half := len(child.items) / 2
-	miditem := child.items[half]
+	miditem := child.items[half] // find the median item to split at
 	siblingL := child.slice(0, half)
 	siblingR := child.slice(half+1, -1)
 	tracer().Debugf("split: med = %v, len(L) = %d, len(R) = %d", miditem, len(siblingL.items), len(siblingR.items))
@@ -385,7 +435,7 @@ func (s slot) stealPredOrSucc(pathBuf slotPath, lowWaterMark uint) (item xitem, 
 	pinx := len(path) - 1
 	var found bool
 	found, path = s.findSucc(path)
-	if found && len(path.last().node.items) >= int(lowWaterMark) {
+	if found && len(path.last().node.items) > int(lowWaterMark) {
 		path[pinx].index++
 	} else {
 		path = pathBuf

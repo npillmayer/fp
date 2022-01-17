@@ -1,15 +1,29 @@
 package btree
 
 /*
-TODOs:
+Remarks:
+--------
 
-- replace K and T with generic types for Go 1.18
+- 'cow' stands for copy-on-write and is used throughout the code for variable holding clones of nodes.
+
+- We use a programming-style reminiscent of functional programming (see remarks on
+  re-balancing) where it makes things easier to understand.
+
+- A new modified incarnation of a tree always is reflected by a new tree.root.
+
 */
 
 const defaultLowWaterMark uint = 3 // 2^n - 1
 // high water mark includes space for +1 child link and for a stopper
 var defaultHighWaterMark uint = uint(ceiling(int(defaultLowWaterMark)*2)) - 2
 
+// Tree is an in-memory B-tree. An empty instance is usable as an empty tree, i.e.
+// this is legal:
+//
+//     tree := btree.Tree[int,int]{}.With(1, 42)
+//
+// returning a tree containing a single node ⟨1⟩ associated with value 42.
+//
 type Tree struct {
 	root          *xnode
 	depth         uint
@@ -17,6 +31,13 @@ type Tree struct {
 	highWaterMark uint
 }
 
+// Immutable constructs a B-tree with options, if you need any.
+// Use it like this:
+//
+//     tree := btree.Immutable[int, string](Degree(16))
+//     tree = tree.With(42, "Galaxy")
+//     value, found := tree.Find(42)   // returns "Galaxy"
+//
 func Immutable(opts ...Option) Tree {
 	tree := Tree{
 		lowWaterMark:  defaultLowWaterMark,
@@ -28,10 +49,16 @@ func Immutable(opts ...Option) Tree {
 	return tree
 }
 
+// Option is a type to help initializing B-trees at creation time.
 type Option func(Tree) Tree
 
-// Degree sets the minimum number of children a node in the tree owns.
+// Degree is an option to set the minimum number of children a node in the tree owns.
 // The lower bound for the degree is 3.
+//
+// Use it like this:
+//
+//     tree := btree.Immutable[int, string](Degree(16))
+//
 func Degree(n int) Option {
 	return func(tree Tree) Tree {
 		low := max(2, n-1)
@@ -43,6 +70,8 @@ func Degree(n int) Option {
 
 // --- API -------------------------------------------------------------------
 
+// Find locates a key in a tree, if present, and returns the value associated with the key.
+// If `key` is not found, the zero value for type T will be returned, together with found=false.
 func (tree Tree) Find(key K) (T, bool) {
 	var found bool
 	var path slotPath = make([]slot, tree.depth)
@@ -53,6 +82,9 @@ func (tree Tree) Find(key K) (T, bool) {
 	return none, false
 }
 
+// With returns a copy of a tree with a new key inserted, which is associated with `value`.
+// If an entry for key is already present in tree, the associated value will be replaced
+// (in a new incarnation of the tree, nevertheless).
 func (tree Tree) With(key K, value T) Tree {
 	var path slotPath = make([]slot, tree.depth)
 	var found bool
@@ -82,6 +114,8 @@ func (tree Tree) With(key K, value T) Tree {
 	return tree.shallowCloneWithRoot(*newRoot.node)
 }
 
+// With returns a copy of a tree with key deleted, if present, together with its associated value.
+// If key is not found, tree is returned unchanged.
 func (tree Tree) WithDeleted(key K) Tree {
 	var path slotPath = make([]slot, tree.depth)
 	var found bool

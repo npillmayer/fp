@@ -6,6 +6,26 @@ import (
 	"strings"
 )
 
+/*
+For various operations on B-trees we manage a path, consisting of an array of slots.
+A slot is a tree-node, together with an index into the keys/children held by that node.
+
+Example, given a tree
+
+	Tree(depth=2 ⊥2 ⊤6)
+	.
+	└── [2,5]
+		├── [0,1]
+		├── [3,4]
+		└── [6,8,9]
+
+To reach key '8' in the rightmost leaf at level 2, we use a path
+
+	[  [2 5]:2   [6 8 9]:1  ]
+
+A slot for a node with n keys may have index ∈ 0 … n
+*/
+
 // --- Slot ------------------------------------------------------------------
 
 // slot holds a step of a path.
@@ -18,6 +38,7 @@ func (s slot) String() string {
 	return strconv.Itoa(s.index) + "@" + s.node.String()
 }
 
+// replaceItem replaces the item of a node the slot points to, i.e. the item at s.index
 func (s slot) replaceItem(item xitem) xitem {
 	assertThat(s.index < len(s.node.items), "internal inconsistency: item index overflow")
 	old := s.node.items[s.index]
@@ -25,6 +46,7 @@ func (s slot) replaceItem(item xitem) xitem {
 	return old
 }
 
+// leftSibling returns the left sibling of an item within a node, or an empty slot.
 func (s slot) leftSibling(child slot) slot {
 	if s.node == nil || len(s.node.children) == 0 || s.index == 0 {
 		return slot{}
@@ -35,6 +57,7 @@ func (s slot) leftSibling(child slot) slot {
 	return slot{node: lsib, index: len(lsib.items)}
 }
 
+// rightSibling returns the right sibling of an item within a node, or an empty slot.
 func (s slot) rightSibling(child slot) slot {
 	if s.node == nil || len(s.node.children) == 0 || s.index >= len(s.node.children)-1 {
 		return slot{}
@@ -71,6 +94,7 @@ func (s slot) siblings2(child slot) mergeinfo {
 	return mi
 }
 
+// item returns the item in a slot.
 func (s slot) item() xitem {
 	return s.node.items[s.index]
 }
@@ -92,6 +116,8 @@ func (s slot) len() int {
 	return len(s.node.items)
 }
 
+// underfull is a convenience-wrapper around s.node.underfull(…)
+// It will return true if slot s is empty (i.e., its node is nil).
 func (s slot) underfull(lowWaterMark uint) bool {
 	if s.node == nil {
 		return true
@@ -101,6 +127,7 @@ func (s slot) underfull(lowWaterMark uint) bool {
 
 // --- Path ------------------------------------------------------------------
 
+// slotPath is a list of slots, denoting the path to an item.
 type slotPath []slot
 
 func (path slotPath) String() string {
@@ -113,6 +140,7 @@ func (path slotPath) String() string {
 	return sb.String()
 }
 
+// last returns the last slot of a path.
 func (path slotPath) last() slot {
 	if len(path) == 0 {
 		return slot{}
@@ -120,6 +148,11 @@ func (path slotPath) last() slot {
 	return path[len(path)-1]
 }
 
+// foldR applies function f on pairs (parent,child) of slots of path.
+// Application starts from the right ('R'), which corresponds to the bottom-most item of the path
+// (often a leaf of the tree). zero is an element to apply as `child` in the rightmost call
+// of f(parent,child). If path is empty, zero will be returned, otherwise the value returned from
+// the final call to f will be returned.
 func (path slotPath) foldR(f func(slot, slot) slot, zero slot) slot {
 	if len(path) == 0 {
 		return zero
@@ -131,6 +164,7 @@ func (path slotPath) foldR(f func(slot, slot) slot, zero slot) slot {
 	return r
 }
 
+// dropLast returns a slice of a path, omitting the last slot.
 func (path slotPath) dropLast() slotPath {
 	if len(path) == 0 {
 		return path
