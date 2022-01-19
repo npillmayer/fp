@@ -212,12 +212,22 @@ func TestInternalLocate(t *testing.T) {
 	defer teardown()
 	//
 	tree := createTreeForTest()
-	path, found := tree.locate(6, find, nil)
-	//
-	if !found {
-		t.Logf("found = %v, path = %s", found, path)
+	var ext ext
+	loc := tree.locate(6, ext, nil)
+	if !loc.present {
+		t.Logf("found = %v, path = %s", loc.present, loc.path)
 		t.Error("expected to find key 6 in tree, didn't")
 	}
+}
+
+type ext struct{}
+
+func (e ext) Agg(key, agg K) K {
+	return lagg(key, agg)
+}
+
+func (e ext) Cmp(key, itemKey, agg K) int {
+	return find(key, itemKey, agg)
 }
 
 // --- Paths -----------------------------------------------------------------

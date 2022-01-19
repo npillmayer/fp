@@ -82,55 +82,6 @@ func (tree Tree) Find(key K) (T, bool) {
 	return none, false
 }
 
-type Comparator func(key, itemKey, agg K) (int, K)
-
-func find(key, itemKey, agg K) (int, K) {
-	tracer().Debugf("find: f(key=%v, item.key=%v, agg=%v)", key, itemKey, agg)
-	if key == itemKey {
-		return 0, agg
-	}
-	if key < itemKey {
-		return -1, agg
-	}
-	agg += key
-	return +1, agg
-}
-
-func (tree Tree) locate(key K, f Comparator, pathBuf slotPath) (slotPath, bool) {
-	path := pathBuf[:0] // we track the path to the key's slot
-	if tree.root == nil {
-		return path, false
-	}
-	var agg K
-	var node *xnode = tree.root // walking nodes, start search at the top
-	for !node.isLeaf() {
-		tracer().Debugf("finding inner node = %v", node)
-		cmp, index := checkNode(node, key, agg, f)
-		path = append(path, slot{node: node, index: index})
-		if cmp == 0 {
-			return path, true
-		}
-		node = node.children[index]
-	}
-	tracer().Debugf("finding leaf node %v", node)
-	cmp, index := checkNode(node, key, agg, f)
-	path = append(path, slot{node: node, index: index})
-	tracer().Debugf("locate: slot path = %s", path)
-	return path, cmp == 0
-}
-
-func checkNode(node *xnode, key, agg K, f Comparator) (cmp, index int) {
-	for index = 0; index < len(node.items); index++ {
-		item := node.items[index]
-		cmp, agg = f(key, item.key, agg)
-		tracer().Debugf("f(%v,%v,%v) -> %v | %v", key, item.key, agg, agg, cmp)
-		if cmp <= 0 {
-			break
-		}
-	}
-	return
-}
-
 // With returns a copy of a tree with a new key inserted, which is associated with `value`.
 // If an entry for key is already present in tree, the associated value will be replaced
 // (in a new incarnation of the tree, nevertheless).
@@ -206,4 +157,125 @@ func (tree Tree) WithDeleted(key K) Tree {
 		newTree.depth = 0
 	}
 	return newTree
+}
+
+// --- Ext -------------------------------------------------------------------
+
+// TreeExtension represents a B-tree as a tree and exposes some of its tree properties.
+//
+// This is something I'll need for using B-trees as ropes/cords in the
+// future. I'm not yet sure of how to go about it in a general way, but my current
+// thinking is that Extension will let clients treat a tree like a tree (in a
+// controlled fashion), while the primary API of B-tree is more like a map.
+//
+type TreeExtension struct {
+	tree Tree
+	ext  Ext
+}
+
+func (tex TreeExtension) Locate(key K) Location {
+	return tex.tree.locate(6, tex.ext, nil)
+}
+
+// Ext returns a tree extension for a given incarnation of a tree.
+// This will wrap a client-provided Ext into an opaque TreeExtension, which then will
+// manage accessing tree-properties of B-trees.
+//
+// Supplying nil as an ext result in returning a default type TreeExtension.
+//
+func (tree Tree) Ext(ext Ext) TreeExtension
+
+// Location reflects a key/value pair in the B-tree, together with the node-path to it.
+// A location is valid for a specific incarnation of a tree only; applying any of its methods
+// on a different incarnation will result in a panic.
+type Location struct {
+	rootNode *xnode
+	path     slotPath
+	present  bool
+}
+
+// Ext (extensions) is something I'll need for using B-trees as ropes/cords in the
+// future. I'm not yet sure of how to go about it in a general way, but my current
+// thinking is that Extension will let clients treat a tree like a tree (in a
+// controlled fashion), while the primary API of B-tree is more like a map.
+type Ext interface {
+	Agg(key, agg K) K
+	Cmp(key, itemKey, agg K) int
+}
+
+type aggregator func(key, agg K) K
+type comparator func(key, itemKey, agg K) int
+
+type _DefaultExtension struct{}
+
+func (dext _DefaultExtension) Agg(key, agg K) K {
+	return agg + key
+}
+
+func (dext _DefaultExtension) Cmp(key, itemKey, agg K) int {
+	switch {
+	case key == itemKey:
+		return 0
+	case key < itemKey:
+		return -1
+	default:
+		return +1
+	}
+}
+
+func lagg(key, agg K) K {
+	return agg + key
+}
+
+func find(key, itemKey, agg K) int {
+	tracer().Debugf("find: f(key=%v, item.key=%v, agg=%v)", key, itemKey, agg)
+	if key == itemKey {
+		return 0
+	}
+	if key < itemKey {
+		return -1
+	}
+	return +1
+}
+
+func (tree Tree) locate(key K, ext Ext, pathBuf slotPath) Location {
+	path := pathBuf[:0] // we track the path to the key's slot
+	if tree.root == nil {
+		return Location{rootNode: tree.root, path: path, present: false}
+	}
+	var agg K
+	var cmp, index int
+	var node *xnode = tree.root // walking nodes, start search at the top
+	for !node.isLeaf() {
+		tracer().Debugf("finding inner node = %v", node)
+		cmp, index, agg = cmpNode(node, key, agg, ext.Cmp, ext.Agg)
+		path = append(path, slot{node: node, index: index})
+		if cmp == 0 {
+			return Location{rootNode: tree.root, path: path, present: true}
+		}
+		node = node.children[index]
+	}
+	tracer().Debugf("finding leaf node %v", node)
+	cmp, index, _ = cmpNode(node, key, agg, ext.Cmp, ext.Agg)
+	path = append(path, slot{node: node, index: index})
+	tracer().Debugf("locate: slot path = %s", path)
+	return Location{rootNode: tree.root, path: path, present: cmp == 0}
+}
+
+func cmpNode(node *xnode, key, agg K, f comparator, a aggregator) (cmp, index int, aggout K) {
+	aggout = agg
+	for index = 0; index < len(node.items); index++ {
+		item := node.items[index]
+		cmp = f(key, item.key, agg)
+		tracer().Debugf("f(%v,%v,%v) -> %v | %v", key, item.key, agg, agg, cmp)
+		switch {
+		case cmp < 0:
+			return
+		case cmp == 0:
+			return
+		case cmp > 0:
+			aggout = a(item.key, aggout)
+		}
+	}
+	return
 }

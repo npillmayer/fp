@@ -277,6 +277,20 @@ func TestTreeDeleteInnerItem(t *testing.T) {
 	//t.Logf("tree =\n%s", printTree(tree))
 }
 
+func TestTreeExtFind(t *testing.T) {
+	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	tracer().SetTraceLevel(tracing.LevelError)
+	defer teardown()
+	//
+	tree := createTreeForTest()
+	tex := tree.Ext(_DefaultExtension{})
+	loc := tex.Locate(6)
+	if !loc.present {
+		t.Logf("tree =\n%s", printTree(tree))
+		t.Error("expected key 6 to be found in tree, haven't")
+	}
+}
+
 // ---------------------------------------------------------------------------
 
 func createTreeForTest() Tree { // tree with values 0…9, without 7
