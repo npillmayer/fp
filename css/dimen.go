@@ -130,7 +130,7 @@ type DimenPatterns[T any] struct {
   Default T
 }
 
-func ExprMatcher[T any](d DimenT) *MatchExpr[T] {
+func DimenPattern[T any](d DimenT) *MatchExpr[T] {
   return &MatchExpr[T]{ dimen: d }
 }
 

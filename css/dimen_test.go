@@ -38,15 +38,27 @@ func TestDimenBasic(t *testing.T) {
 
 func TestDimenPattern(t *testing.T) {
 	ten := css.JustDimen(dimen.PT * 10)
+	// now use it
 	var du dimen.DU
-	m := css.ExprMatcher[int](ten)
+	m := css.DimenPattern[int](ten)
 	zehn := m.OneOf(css.DimenPatterns[int]{
-	  Just:          m.With(&du).Const(10),
-	  Auto:          0,
-	  Default:       -1,
+		Just:    m.With(&du).Const(10),
+		Auto:    0,
+		Default: -1,
 	})
 	if zehn != 10 {
-	  t.Errorf("expected zehn == 10, isn't: %#v", zehn)
+		t.Errorf("expected zehn == 10, isn't: %#v", zehn)
+	}
+
+	d := css.JustDimen(dimen.PT * 10)
+	// now use it
+	e := css.DimenPattern[dimen.DU](d)
+	distance := e.OneOf(css.DimenPatterns[dimen.DU]{
+		Just:    e.With(&du).Const(2 * du),
+		Auto:    0,
+		Default: -1,
+	})
+	if distance != 2*10*dimen.PT {
+		t.Errorf("expected distance to be %v, isn't: %#v", 10*dimen.PT, distance)
 	}
 }
-
