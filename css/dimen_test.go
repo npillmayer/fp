@@ -42,7 +42,7 @@ func TestDimenPattern(t *testing.T) {
 	var du dimen.DU
 	m := css.DimenPattern[int](ten)
 	zehn := m.OneOf(css.DimenPatterns[int]{
-		Just:    m.With(&du).Const(10),
+		Just:    10,
 		Auto:    0,
 		Default: -1,
 	})
@@ -59,6 +59,6 @@ func TestDimenPattern(t *testing.T) {
 		Default: -1,
 	})
 	if distance != 2*10*dimen.PT {
-		t.Errorf("expected distance to be %v, isn't: %#v", 10*dimen.PT, distance)
+		t.Errorf("expected distance to be %v, isn't: %#v", 20*dimen.PT, distance)
 	}
 }
