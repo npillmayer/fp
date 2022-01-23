@@ -1,0 +1,52 @@
+package css_test
+
+import (
+	"testing"
+
+	"github.com/npillmayer/fp/css"
+	"github.com/npillmayer/tyse/core/dimen"
+	"github.com/npillmayer/tyse/core/percent"
+)
+
+func TestDimenBasic(t *testing.T) {
+	ten := css.JustDimen(dimen.PT * 10)
+	var du dimen.DU
+	switch m := ten.Match(); m {
+	case m.Just(&du):
+		t.Logf("du = %s", du)
+	default:
+		t.Errorf("expected Just(10pt) to be a fixed value, isn't: %#v", ten)
+	}
+
+	auto := css.Auto()
+	switch m := auto.Match(); m {
+	case m.IsKind(css.Auto()):
+		t.Logf("dimen is auto")
+	default:
+		t.Errorf("expected dimen auto to match auto, isn't: %#v", auto)
+	}
+
+	pcnt := css.Percentage(percent.FromInt(80))
+	var p percent.Percent
+	switch m := pcnt.Match(); m {
+	case m.Percentage(&p):
+		t.Logf("percent = %s", p)
+	default:
+		t.Errorf("expected Percentage(80) to be a percentage value, isn't: %#v", pcnt)
+	}
+}
+
+func TestDimenPattern(t *testing.T) {
+	ten := css.JustDimen(dimen.PT * 10)
+	var du dimen.DU
+	m := css.ExprMatcher[int](ten)
+	zehn := m.OneOf(css.DimenPatterns[int]{
+	  Just:          m.With(&du).Const(10),
+	  Auto:          0,
+	  Default:       -1,
+	})
+	if zehn != 10 {
+	  t.Errorf("expected zehn == 10, isn't: %#v", zehn)
+	}
+}
+
