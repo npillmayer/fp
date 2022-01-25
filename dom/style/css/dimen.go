@@ -98,6 +98,7 @@ func DimenOption(p style.Property) DimenT {
 	}
 	d, err := ParseDimen(string(p))
 	if err != nil {
+		tracer().Debugf("dimension option from property '%s': %v", p, err)
 		return DimenT{}
 	}
 	return d
@@ -152,6 +153,7 @@ func (m *Matcher) Percentage(p *Percent) *Matcher {
 
 //type DimenPatterns[T any] map[*MatchExpr[T]]T
 type DimenPatterns[T any] struct {
+	None    T
 	Auto    T
 	Inherit T
 	Initial T
@@ -169,6 +171,8 @@ type MatchExpr[T any] struct {
 
 func (m *MatchExpr[T]) OneOf(patterns DimenPatterns[T]) T {
 	switch {
+	case m.dimen.flags == dimenNone:
+		return patterns.None
 	case m.dimen.flags&dimenAuto > 0:
 		return patterns.Auto
 	case m.dimen.flags&dimenAbsolute > 0:

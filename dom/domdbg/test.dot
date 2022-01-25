@@ -1,0 +1,20 @@
+digraph g {
+  graph [fontsize=30 labelloc="t" label="" splines=true overlap=false rankdir = "TB"];
+  graph [fontname = "helvetica", fontsize=16];
+  node [fontname = "helvetica", fontsize=16];
+  edge [fontname = "helvetica", fontsize=16, fontcolor="black"];
+  "state2" [ style = "filled" penwidth = 1 fillcolor = "white" shape = "Mrecord"
+	label =<<table border="0" cellborder="0" cellpadding="3" bgcolor="white">
+	  <tr><td bgcolor="azure4" align="center" colspan="2"><font color="white">Margin</font></td></tr>
+	  <tr><td align="right" port="r4">margin-top:</td><td>5px</td></tr>
+	  <tr><td align="right">margin-right:</td><td>1em</td></tr></table>> ];
+  "state3" [ style = "filled" penwidth = 1 fillcolor = "white" fontname = "Courier New" shape = "Mrecord" label =<<table border="0" cellborder="0" cellpadding="3" bgcolor="white"><tr><td bgcolor="black" align="center" colspan="2"><font color="white">State #2</font></td></tr><tr><td align="left" port="r4">&#40;4&#41; l -&gt; 'n' &bull;</td><td bgcolor="grey" align="right">=$</td></tr></table>> ];
+
+"p"         [ shape=ellipse style=filled fillcolor=white   ] ;
+"article"   [  shape=ellipse style=filled fillcolor=white   ] ;
+
+  state2 -> state3 [penwidth=1, label="e"];
+  p -> state2 [style=dashed];
+  p -> article [dir=none, weight=1] ;
+  }
+
