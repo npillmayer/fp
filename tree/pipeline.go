@@ -150,9 +150,9 @@ func (f *filter[S, T]) start(env *filterenv[S]) chan nodePackage[T] {
 	for i := 0; i < n; i++ {
 		wno := i + 1
 		if f.queue == nil {
-			go filterWorker[S, T](f, wno) // startup worker no. #wno
+			go filterWorker(f, wno) // startup worker no. #wno
 		} else {
-			go filterWorkerWithQueue[S](f, wno) // startup worker no. #wno
+			go filterWorkerWithQueue(f, wno) // startup worker no. #wno
 		}
 	}
 	return res // needed r/w for next filter in pipe

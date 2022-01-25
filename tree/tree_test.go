@@ -16,6 +16,7 @@ import (
 func TestAddChild(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "tyse.frame.tree")
 	defer teardown()
+	// configureGoTracing(t)
 	//
 	parent := NewNode(-1)
 	parent.AddChild(NewNode(0)).AddChild(NewNode(1))
@@ -46,6 +47,7 @@ func TestAddChild(t *testing.T) {
 func TestEmptyWalker(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "tyse.frame.tree")
 	defer teardown()
+	// configureGoTracing(t)
 	//
 	n := checkRuntime(t, -1)
 	w := NewWalker[int](nil)
@@ -85,6 +87,7 @@ func TestParentPredicate(t *testing.T) {
 func TestParentOfRoot(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "tyse.frame.tree")
 	defer teardown()
+	// configureGoTracing(t)
 	//
 	n := checkRuntime(t, -1)
 	node1 := NewNode(1)
@@ -126,6 +129,7 @@ func TestAncestor(t *testing.T) {
 func TestDescendents(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "tyse.frame.tree")
 	defer teardown()
+	// configureGoTracing(t)
 	//
 	n := checkRuntime(t, -1)
 	node1, node2, node3, node4 := NewNode(1), NewNode(2), NewNode(3), NewNode(4)
@@ -198,6 +202,7 @@ func ExampleWalker_Promise() {
 func TestTopDown1(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "tyse.frame.tree")
 	defer teardown()
+	// configureGoTracing(t)
 	//
 	n := checkRuntime(t, -1)
 	// Build a tree:
@@ -228,6 +233,7 @@ func TestTopDown1(t *testing.T) {
 func TestBottomUp1(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "tyse.frame.tree")
 	defer teardown()
+	// configureGoTracing(t)
 	//
 	n := checkRuntime(t, -1)
 	// Build a tree:
@@ -261,6 +267,7 @@ func TestBottomUp1(t *testing.T) {
 func TestBottomUp2(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "tyse.frame.tree")
 	defer teardown()
+	// configureGoTracing(t)
 	//
 	n := checkRuntime(t, -1)
 	// Build a tree:
@@ -294,6 +301,7 @@ func TestBottomUp2(t *testing.T) {
 func TestRank(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "tyse.frame.tree")
 	defer teardown()
+	// configureGoTracing(t)
 	//
 	n := checkRuntime(t, -1)
 	// Build a tree:
@@ -319,6 +327,7 @@ func TestRank(t *testing.T) {
 func TestSerial1(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "tyse.frame.tree")
 	defer teardown()
+	// configureGoTracing(t)
 	//
 	n := checkRuntime(t, -1)
 	// Build a tree:
