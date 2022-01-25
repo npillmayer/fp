@@ -83,7 +83,7 @@ func NewWalker[T comparable](initial *Node[T]) *Walker[T, T] {
 		return nil
 	}
 	tracer().Debugf("new tree-walker, initial node = %v", initial)
-	w := &Walker[T, T]{initial: initial, pipe: newPipeline[T]()}
+	w := &Walker[T, T]{initial: initial, pipe: newPipeline[T](nil)}
 	w.Mutex = mx
 	return w
 }
@@ -114,12 +114,12 @@ func appendFilterForTask[S, T, U comparable](w *Walker[S, T], task workerTask[T,
 func (w *Walker[S, T]) startProcessing() {
 	doStart := false
 	tracer().Debugf("tree walker starts processing")
-	w.pipe.RLock()
+	w.pipe.state.mx.RLock()
 	if w.pipe.empty() { // no processing up to now => start with initial node
 		w.pipe.pushSync(w.initial, 0) // input is buffered, will return immediately
 		doStart = true                // yes, we will have to start the pipeline
 	}
-	w.pipe.RUnlock()
+	w.pipe.state.mx.RUnlock()
 	if doStart { // ok to be outside mutex as other goroutines will check pipe.empty()
 		w.pipe.startProcessing() // must be outside of mutex lock
 	}
@@ -136,16 +136,16 @@ func (w *Walker[S, T]) startProcessing() {
 // is a synchronization point.
 func (w *Walker[S, T]) Promise() func() ([]*Node[T], error) {
 	if w == nil {
-		// empty Walker => return nil set and an error
+		// empty Walker => wrap nil set and an error
 		return func() ([]*Node[T], error) {
 			return nil, ErrEmptyTree
 		}
 	}
 	// drain the result channel and the error channel
 	w.promising = true // will block calls to establish new filters
-	errch := w.pipe.errors
+	errch := w.pipe.state.errors
 	results := w.pipe.results
-	counter := &w.pipe.queuecount
+	counter := &w.pipe.state.queuecount
 	signal := make(chan struct{}, 1)
 	var selection []*Node[T]
 	var lasterror error
@@ -234,10 +234,10 @@ func (w *Walker[S, T]) AncestorWith(predicate Predicate[T]) *Walker[S, T] {
 		return nil
 	}
 	if predicate == nil {
-		w.pipe.errors <- ErrInvalidFilter
+		w.pipe.state.errors <- ErrInvalidFilter
 		return w
 	}
-	newW, err := appendFilterForTask(w, ancestorWith[T], nil, 0)
+	newW, err := appendFilterForTask(w, ancestorWith[T], predicate, 0)
 	//err := w.appendFilterForTask(ancestorWith[T], predicate, 0) // hook in this filter
 	if err != nil {
 		tracer().Errorf(err.Error())
@@ -254,7 +254,7 @@ func ancestorWith[T comparable](node *Node[T], isBuffered bool, udata userdata, 
 	if node == nil {
 		return nil
 	}
-	predicate := udata.filterdata.(Predicate[T])
+	predicate := udata.filterlocal.(Predicate[T])
 	anc := node.Parent()
 	serial := udata.serial
 	for anc != nil {
@@ -280,11 +280,11 @@ func (w *Walker[S, T]) DescendentsWith(predicate Predicate[T]) *Walker[S, T] {
 		return nil
 	}
 	if predicate == nil {
-		w.pipe.errors <- ErrInvalidFilter
+		w.pipe.state.errors <- ErrInvalidFilter
 		return w
 	}
 	//err := w.appendFilterForTask(descendentsWith[T], predicate, 5) // need a helper queue
-	newW, err := appendFilterForTask(w, descendentsWith[T], nil, 0)
+	newW, err := appendFilterForTask(w, descendentsWith[T], predicate, 5)
 	if err != nil { // this should never happen here
 		tracer().Errorf(err.Error())
 		panic(err) // for debugging as long as this is unstable
@@ -296,7 +296,7 @@ func descendentsWith[T comparable](node *Node[T], isBuffered bool, udata userdat
 	pushBuf func(*Node[T], interface{}, uint32)) error {
 	//
 	if isBuffered {
-		predicate := udata.filterdata.(Predicate[T])
+		predicate := udata.filterlocal.(Predicate[T])
 		matchedNode, err := predicate(node, nil) // currently no origin node availabe
 		serial := udata.serial
 		if serial == 0 {
@@ -322,7 +322,8 @@ func revisitChildrenOf[T comparable](node *Node[T], serial uint32, pushBuf func(
 	for position := 0; position < chcnt; position++ {
 		if ch, ok := node.Child(position); ok {
 			pp := parentAndPosition[T]{node, position}
-			pushBuf(ch, pp, node.calcChildSerial(serial, ch, position))
+			chSerial := node.calcChildSerial(serial, ch, position)
+			pushBuf(ch, pp, chSerial)
 		}
 	}
 }
@@ -358,11 +359,11 @@ func (w *Walker[S, T]) Filter(f Predicate[T]) *Walker[S, T] {
 		return nil
 	}
 	if f == nil {
-		w.pipe.errors <- ErrInvalidFilter
+		w.pipe.state.errors <- ErrInvalidFilter
 		return w
 	}
 	//err := w.appendFilterForTask(clientFilter[T], f, 0) // hook in this filter
-	newW, err := appendFilterForTask(w, clientFilter[T], nil, 0)
+	newW, err := appendFilterForTask(w, clientFilter[T], f, 0)
 	if err != nil {
 		tracer().Errorf(err.Error())
 		panic(err)
@@ -374,7 +375,7 @@ func (w *Walker[S, T]) Filter(f Predicate[T]) *Walker[S, T] {
 func clientFilter[T comparable](node *Node[T], isBuffered bool, udata userdata, push func(*Node[T], uint32),
 	pushBuf func(*Node[T], interface{}, uint32)) error {
 	//
-	userfunc := udata.filterdata.(Predicate[T])
+	userfunc := udata.filterlocal.(Predicate[T])
 	serial := udata.serial
 	n, err := userfunc(node, node)
 	if n != nil && err != nil {
@@ -401,11 +402,11 @@ func (w *Walker[S, T]) TopDown(action Action[T]) *Walker[S, T] {
 		return nil
 	}
 	if action == nil {
-		w.pipe.errors <- ErrInvalidFilter
+		w.pipe.state.errors <- ErrInvalidFilter
 		return w
 	}
 	//err := w.appendFilterForTask(topDown[T], action, 5) // need a helper queue
-	newW, err := appendFilterForTask(w, topDown[T], nil, 0)
+	newW, err := appendFilterForTask(w, topDown[T], action, 5)
 	if err != nil {
 		tracer().Errorf(err.Error())
 		panic(err) // TODO for debugging purposes until more mature
@@ -423,7 +424,7 @@ func topDown[T comparable](node *Node[T], isBuffered bool, udata userdata, push 
 	pushBuf func(*Node[T], interface{}, uint32)) error {
 	//
 	if isBuffered { // node was received from buffer queue
-		action := udata.filterdata.(Action[T])
+		action := udata.filterlocal.(Action[T])
 		var parent *Node[T]
 		var position int
 		if udata.nodelocal != nil {
@@ -469,7 +470,7 @@ func (w *Walker[S, T]) BottomUp(action Action[T]) *Walker[S, T] {
 		return nil
 	}
 	if action == nil {
-		w.pipe.errors <- ErrInvalidFilter
+		w.pipe.state.errors <- ErrInvalidFilter
 		return w
 	}
 	filterdata := &bottomUpFilterData[T]{
@@ -477,7 +478,7 @@ func (w *Walker[S, T]) BottomUp(action Action[T]) *Walker[S, T] {
 		childrenDict: newRankMap[T](),
 	}
 	//err := w.appendFilterForTask(bottomUp[T], filterdata, 5) // need a helper queue
-	newW, err := appendFilterForTask(w, bottomUp[T], filterdata, 0)
+	newW, err := appendFilterForTask(w, bottomUp[T], filterdata, 5)
 	if err != nil {
 		tracer().Errorf(err.Error())
 		panic(err) // TODO for debugging purposes until more mature
@@ -490,7 +491,7 @@ func bottomUp[T comparable](node *Node[T], isBuffered bool, udata userdata, push
 	//
 	if node.ChildCount() > 0 { // check if all children have been processed
 		var bUpFilterData *bottomUpFilterData[T]
-		bUpFilterData = udata.filterdata.(*bottomUpFilterData[T])
+		bUpFilterData = udata.filterlocal.(*bottomUpFilterData[T])
 		tracer().Debugf("bottom up filter data = %v", bUpFilterData)
 		childCounter := bUpFilterData.childrenDict
 		if int(childCounter.Get(node)) < node.ChildCount() {
@@ -504,13 +505,13 @@ func bottomUp[T comparable](node *Node[T], isBuffered bool, udata userdata, push
 		if parent != nil {
 			position = parent.IndexOfChild(node)
 		}
-		action := udata.filterdata.(*bottomUpFilterData[T]).action
+		action := udata.filterlocal.(*bottomUpFilterData[T]).action
 		resultNode, err := action(node, parent, position)
 		if err == nil && resultNode != nil {
 			push(resultNode, serial) // result node -> next pipeline stage
 		}
 		if parent != nil { // if this is not a root node
-			childCounter := udata.filterdata.(*bottomUpFilterData[T]).childrenDict
+			childCounter := udata.filterlocal.(*bottomUpFilterData[T]).childrenDict
 			childCounter.Inc(parent)       // signal that one more child is done (ie., this node)
 			pushBuf(parent, udata, serial) // possibly continue processing with parent
 		}

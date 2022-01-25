@@ -11,6 +11,7 @@ Copyright © 2017–2022 Norbert Pillmayer <norbert@pillmayer.com>
 */
 
 import (
+	"fmt"
 	"runtime"
 	"sort"
 	"sync"
@@ -54,13 +55,14 @@ const maxBufferLength int = 128
 // buffer: function to queue node in local buffer
 //
 // Does not return anything except a possible error condition.
-type workerTask[S, T comparable] func(node *Node[S], isbuffered bool, udata userdata,
-	emit func(*Node[T], uint32), buffer func(*Node[S], interface{}, uint32)) error
+type workerTask[S, T comparable] func(
+	node *Node[S],
+	isbuffered bool,
+	udata userdata,
+	emit func(*Node[T], uint32),
+	buffer func(*Node[S], interface{}, uint32)) error
 
 type stage interface {
-	FilterData() interface{}
-	Errors() chan<- error
-	WorkloadCounter() *sync.WaitGroup
 	Shutdown()
 }
 
@@ -68,7 +70,6 @@ type stage interface {
 // process input (Nodes) and produce results (Nodes).
 // filters will perform concurrently.
 type filter[S, T comparable] struct {
-	//next       *filter[T]            // filters are chained
 	results    chan<- nodePackage[T] // results of this filter (pipeline stage)
 	queue      chan nodePackage[S]   // helper queue if necessary
 	task       workerTask[S, T]      // the task this filter performs
@@ -76,20 +77,11 @@ type filter[S, T comparable] struct {
 	env        *filterenv[S]         // connection to outside world
 }
 
-func (f *filter[S, T]) FilterData() interface{} {
-	return f.filterdata
-}
-
-func (f *filter[S, T]) Errors() chan<- error {
-	return f.env.errors
-}
-
-func (f *filter[S, T]) WorkloadCounter() *sync.WaitGroup {
-	return f.env.queuecounter
-}
-
 func (f *filter[S, T]) Shutdown() {
-	panic("TODO")
+	close(f.results)
+	if f.queue != nil {
+		close(f.queue)
+	}
 }
 
 // nodePackage is the type which is transported in a pipeline.
@@ -115,14 +107,14 @@ type filterenv[T comparable] struct {
 
 // userdata is a container managed by the pipeline mechanism. It will contain
 // two types of data availble for filters:
-// information global to a filter (filterdata),
-// and information acompanying a single node (nodelocal & serial).
+// ■ private information local to a filter (filterlocal),
+// ■ and information acompanying a single node (nodelocal & serial).
 // The pipeline mechanism will construct this from the filter environment and from
 // node-local user-managed data, and it will deconstruct it for calls to a 'task()'.
 type userdata struct {
-	filterdata interface{}
-	nodelocal  interface{}
-	serial     uint32
+	filterlocal interface{}
+	nodelocal   interface{}
+	serial      uint32
 }
 
 // newFilter creates a new pipeline stage, i.e. a filter fed from an input
@@ -185,7 +177,8 @@ func filterWorker[S, T comparable](f *filter[S, T], wno int) {
 		if err != nil {
 			f.env.errors <- err // signal error to caller
 		}
-		tracer().Debugf("filter stage %d finished task for %v | %d", wno, node, serial)
+		qid := fmt.Sprintf("[#%p]", f.env.queuecounter)
+		tracer().Debugf("filter stage %d finished -1 task for %v | %d in %s", wno, node, serial, qid)
 		f.env.queuecounter.Done() // worker has finished a workpackage
 	}
 }
@@ -209,11 +202,11 @@ func filterWorkerWithQueue[S, T comparable](f *filter[S, T], wno int) {
 			node = inNode.node
 			udata.serial = inNode.serial
 			udata.nodelocal = nil
-			udata.filterdata = f.filterdata
+			udata.filterlocal = f.filterdata
 			buffered = false
 		case supdata := <-f.queue:
 			node = supdata.node
-			udata.filterdata = f.filterdata
+			udata.filterlocal = f.filterdata
 			udata.nodelocal = supdata.nodelocal
 			udata.serial = supdata.serial
 			buffered = true
@@ -223,7 +216,8 @@ func filterWorkerWithQueue[S, T comparable](f *filter[S, T], wno int) {
 			if err != nil {
 				f.env.errors <- err // signal error to caller
 			}
-			tracer().Debugf("filter stage %d finished buffered task for %v | %d", wno, node, udata.serial)
+			qid := fmt.Sprintf("[#%p]", f.env.queuecounter)
+			tracer().Debugf("filter stage %d finished -1 buffered task for %v | %d in %s", wno, node, udata.serial, qid)
 			f.env.queuecounter.Done() // worker has finished a workpackage
 		} else {
 			break // no more work to do
@@ -234,36 +228,64 @@ func filterWorkerWithQueue[S, T comparable](f *filter[S, T], wno int) {
 // pipeline is a chain of filters to perform tasks on Nodes.
 // Filters, i.e., pipeline stages are connected by channels.
 type pipeline[S, T comparable] struct {
-	sync.RWMutex                     // to sychronize access to various fields
-	queuecount   sync.WaitGroup      // overall count of work packages
-	errors       chan error          // collector channel for error messages
-	stages       []stage             // chain of stages/filters
-	input        chan nodePackage[S] // initial workload
-	results      chan nodePackage[T] // where final output of this pipeline goes to
-	running      bool                // is this pipeline processing?
+	input   chan nodePackage[S] // initial workload
+	results chan nodePackage[T] // where final output of this pipeline goes to
+	state   *pipelineState      // mutable state all incarnations of a pipeline refer to
+}
+
+// pipelineState is the mutable part of a pipeline, shared by all incarnations of a
+// pipeline. This is necessary for synchronization.
+type pipelineState struct {
+	mx         sync.RWMutex   // to sychronize access to various fields
+	queuecount sync.WaitGroup // overall count of work packages
+	errors     chan error     // collector channel for error messages
+	stages     []stage        // chain of stages/filters
+	running    bool           // is this pipeline processing?
+}
+
+func newPipelineState() *pipelineState {
+	state := &pipelineState{errors: make(chan error, 20)}
+	return state
+}
+
+func (pstate *pipelineState) appendStage(s stage) {
+	pstate.stages = append(pstate.stages, s)
 }
 
 // newPipeline creates an empty pipeline.
-func newPipeline[T comparable]() *pipeline[T, T] {
+func newPipeline[T comparable](state *pipelineState) *pipeline[T, T] {
 	pipe := &pipeline[T, T]{}
-	pipe.errors = make(chan error, 20)
+	if state == nil {
+		state = newPipelineState()
+	}
+	pipe.state = state
 	pipe.input = make(chan nodePackage[T], 10)
 	pipe.results = pipe.input // short-curcuit, will be filled with filters
 	return pipe
 }
 
+// clonePipeline creates a new pipeline from an existing one.
+// It will not connect the queues, but it will create a new result queue of type U.
+func clonePipeline[S, T, U comparable](p *pipeline[S, T]) *pipeline[S, U] {
+	pipe := &pipeline[S, U]{state: p.state}
+	pipe.input = p.input
+	pipe.results = make(chan nodePackage[U], 10)
+	return pipe
+}
+
 // Is this pipeline empty, i.e., has no filter stages yet?
 func (pipe *pipeline[S, T]) empty() bool {
-	pipe.RLock()
-	defer pipe.RUnlock()
-	return len(pipe.stages) == 0
+	pipe.state.mx.RLock()
+	defer pipe.state.mx.RUnlock()
+	return len(pipe.state.stages) == 0
 }
 
 // pushResult puts a node on the results channel of a filter stage (non-blocking).
 // It is used by filter workers to communicate a result to the next stage
 // of a pipeline.
 func (f *filter[S, T]) pushResult(node *Node[T], serial uint32) {
-	tracer().Debugf("filter stage pushes result %v | %d", node, serial)
+	qid := fmt.Sprintf("[#%p]", f.env.queuecounter)
+	tracer().Debugf("filter stage pushes +1 result %v | %d to %s", node, serial, qid)
 	f.env.queuecounter.Add(1)
 	written := true
 	select { // try to send it synchronously without blocking
@@ -282,7 +304,8 @@ func (f *filter[S, T]) pushResult(node *Node[T], serial uint32) {
 // (non-blocking).
 func (f *filter[S, T]) pushBuffer(node *Node[S], udata interface{}, serial uint32) {
 	nodesup := nodePackage[S]{node, udata, serial}
-	tracer().Debugf("filter stage buffers node %v | %d", node, serial)
+	qid := fmt.Sprintf("[#%p]", f.env.queuecounter)
+	tracer().Debugf("filter stage buffers +1 node %v | %d to %s", node, serial, qid)
 	f.env.queuecounter.Add(1) // overall workload increases
 	written := true
 	select { // try to send it synchronously without blocking
@@ -302,25 +325,17 @@ func (f *filter[S, T]) pushBuffer(node *Node[S], udata interface{}, serial uint3
 // sets an environment for the filter.
 func AppendFilter[S, T, U comparable](pipe *pipeline[S, T], f *filter[T, U]) *pipeline[S, U] {
 	tracer().Debugf("append tree filter")
-	pipe.Lock()
-	defer pipe.Unlock()
-	var newpipe pipeline[S, U] = clonePipeline // TODO mutex + waitgroup
-	// if pipe.stages == nil {
-	newpipe.stages = append(pipe.stages, f)
-	// }
-	// else { // append at end of filter chain
-	// 	ff := pipe.filters
-	// 	for f.next != nil {
-	// 		ff = ff.next
-	// 	}
-	// 	ff.next = f
-	// }
+	pipe.state.mx.Lock()
+	defer pipe.state.mx.Unlock()
+	var newpipe *pipeline[S, U] = clonePipeline[S, T, U](pipe)
+	newpipe.state.appendStage(f)
+	tracer().Debugf("adding new stage/filter to pipeline, now #%d", len(newpipe.state.stages))
 	env := &filterenv[T]{} // now set the environment for the filter
-	env.errors = pipe.errors
-	env.queuecounter = &pipe.queuecount
+	env.errors = pipe.state.errors
+	env.queuecounter = &pipe.state.queuecount
 	env.input = pipe.results       // current output is input to new filter stage
 	newpipe.results = f.start(env) // remember new final output
-	return &newpipe
+	return newpipe
 }
 
 // startProcessing starts a pipeline. It will start a watchdog goroutine
@@ -328,42 +343,44 @@ func AppendFilter[S, T, U comparable](pipe *pipeline[S, T], f *filter[T, U]) *pi
 // The watchdog will close all channels as soon as no more work
 // packages (i.e., Nodes) are in the pipeline.
 // Pre-requisite: at least one node/task in the front input channel.
+//
+// TODO pipe.stages is stale due to cloning of pipeline!
 func (pipe *pipeline[S, T]) startProcessing() {
-	pipe.Lock()
-	defer pipe.Unlock()
-	if !pipe.running {
-		pipe.running = true
+	pipe.state.mx.Lock()
+	defer pipe.state.mx.Unlock()
+	if !pipe.state.running {
+		pipe.state.running = true
 		go func() { // cleanup function
-			pipe.queuecount.Wait() // wait for empty queues
-			close(pipe.errors)
+			qid := fmt.Sprintf("[%p]", &pipe.state.queuecount)
+			tracer().Debugf("started waiting for empty node queue %s ...", qid)
+			pipe.state.queuecount.Wait() // wait for empty queues
+			tracer().Debugf("shutting down...")
+			close(pipe.state.errors)
 			close(pipe.input)
-			for _, f := range pipe.stages {
+			tracer().Debugf("closed error- and input-pipes, now shutting down %d stages...", len(pipe.state.stages))
+			for _, f := range pipe.state.stages {
+				tracer().Debugf("shutting down filter")
 				f.Shutdown()
 			}
-			// i := 1
-			// for f != nil {
-			// 	close(f.results)
-			// 	if f.queue != nil {
-			// 		close(f.queue)
-			// 	}
-			// 	f = f.next
-			// 	i++
-			// }
-			pipe.running = false
+			pipe.state.running = false
 		}()
 	}
 }
 
 // pushSync synchronously puts a node on the input channel of a pipeline.
 func (pipe *pipeline[S, T]) pushSync(node *Node[S], serial uint32) {
-	pipe.queuecount.Add(1)
+	qid := fmt.Sprintf("[#%p]", &pipe.state.queuecount)
+	tracer().Debugf("pipeline sync start pushes +1 node %v | %d to %s", node, serial, qid)
+	pipe.state.queuecount.Add(1)
 	pipe.input <- nodePackage[S]{node, nil, serial} // input q is buffered
 }
 
 // pushAsync asynchronously puts a node on the input channel of a pipeline.
 func (pipe *pipeline[S, T]) pushAsync(node *Node[S], serial uint32) {
-	pipe.queuecount.Add(1)
 	go func(node *Node[S]) {
+		qid := fmt.Sprintf("[#%p]", &pipe.state.queuecount)
+		tracer().Debugf("pipeline async start pushes +1 node %v | %d to %s", node, serial, qid)
+		pipe.state.queuecount.Add(1)
 		pipe.input <- nodePackage[S]{node, nil, serial} // input q is buffered
 	}(node)
 }
@@ -379,7 +396,8 @@ func waitForCompletion[T comparable](results <-chan nodePackage[T], errch <-chan
 	m := make(map[*Node[T]]uint32) // intermediate map to suppress duplicates
 	for nodepkg := range results { // drain results channel
 		m[nodepkg.node] = nodepkg.serial // remember last serial for node (may be random)
-		tracer().Debugf("extracted result")
+		qid := fmt.Sprintf("[#%p]", counter)
+		tracer().Debugf("extracted -1 result from %s", qid)
 		counter.Done() // we removed a value => count down
 	}
 	for node, serial := range m { // extract unique results into slices

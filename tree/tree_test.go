@@ -63,9 +63,9 @@ func TestEmptyWalker(t *testing.T) {
 }
 
 func TestParentPredicate(t *testing.T) {
-	// teardown := gotestingadapter.QuickConfig(t, "tyse.frame.tree")
-	// defer teardown()
-	configureGoTracing(t)
+	teardown := gotestingadapter.QuickConfig(t, "tyse.frame.tree")
+	defer teardown()
+	// configureGoTracing(t)
 	//
 	n := checkRuntime(t, -1)
 	node1, node2 := NewNode(1), NewNode(2)
@@ -103,6 +103,7 @@ func TestParentOfRoot(t *testing.T) {
 func TestAncestor(t *testing.T) {
 	teardown := gotestingadapter.QuickConfig(t, "tyse.frame.tree")
 	defer teardown()
+	// configureGoTracing(t)
 	//
 	n := checkRuntime(t, -1)
 	node1, node2 := NewNode(1), NewNode(2)
