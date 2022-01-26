@@ -30,7 +30,7 @@ import (
 	"github.com/npillmayer/schuko/tracing"
 )
 
-// tracer traces with key 'tyse.frame.tree'.
+// tracer traces with key 'tyse.dom'.
 func tracer() tracing.Trace {
-	return tracing.Select("tyse.frame.tree")
+	return tracing.Select("tyse.dom")
 }

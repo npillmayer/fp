@@ -557,7 +557,7 @@ func FromHTMLParseTree(h *html.Node, css cssom.StyleSheet) *W3CNode {
 	if css != nil {
 		s.AddStylesForScope(nil, css, cssom.Author)
 	}
-	stytree, err := s.Style(h, styledtree.Creator())
+	stytree, err := s.Style(h) //, styledtree.Creator())
 	if err != nil {
 		tracer().Errorf("Cannot style test document: %s", err.Error())
 		return nil

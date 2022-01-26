@@ -17,9 +17,9 @@ import (
 	"github.com/npillmayer/schuko/tracing"
 )
 
-// tracer will return a tracer. We are tracing to 'tyse.engine'
+// tracer will return a tracer. We are tracing to 'tyse.dom'
 func tracer() tracing.Trace {
-	return tracing.Select("tyse.tracing")
+	return tracing.Select("tyse.dom")
 }
 
 // Property is a raw value for a CSS property. For example, with

@@ -576,16 +576,18 @@ func isStylable(a atom.Atom) bool {
 func createStylesForNode(node *tree.Node[*styledtree.StyNode], rulesTree *rulesTreeType,
 	splitters []CompoundPropertiesSplitter) (*tree.Node[*styledtree.StyNode], error) {
 	//
-	styler := creator.ToStyler(node)
-	h := styler.HTMLNode()
+	//styler := creator.ToStyler(node)
+	h := node.Payload.HTMLNode()
+	//h := styler.HTMLNode()
 	if h.Type == html.DocumentNode || h.Type == html.ElementNode {
 		if isStylable(h.DataAtom) {
-			matchlist := rulesTree.FilterMatchesFor(styler.HTMLNode())
+			matchlist := rulesTree.FilterMatchesFor(h)
 			if matchlist != nil && len(matchlist.matchingRules) != 0 {
 				matchlist.SortProperties(splitters)
-				pmap := matchlist.createStyleGroups(node.Parent(), creator)
+				pmap := matchlist.createStyleGroups(node.Parent())
 				tracer().Debugf("Setting styles for node %v =\n%s", node, pmap)
-				creator.SetStyles(node, pmap)
+				//creator.SetStyles(node, pmap)
+				node.Payload.SetStyles(pmap)
 			} else {
 				tracer().Debugf("Node %v matched no style rules", node)
 			}

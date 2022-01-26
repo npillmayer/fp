@@ -18,6 +18,10 @@ type StyNode struct {
 	computedStyles      *style.PropertyMap
 }
 
+func (sn *StyNode) String() string {
+	return "[" + sn.htmlNode.Data + "]"
+}
+
 // NewNodeForHTMLNode creates a new styled node linked to an HTML node.
 func NewNodeForHTMLNode(html *html.Node) *tree.Node[*StyNode] {
 	sn := &StyNode{}
