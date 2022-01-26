@@ -30,7 +30,7 @@ func TestTreeCreateTreeForTest(t *testing.T) {
 }
 
 func TestTreeFindPathInEmptyTree(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	defer teardown()
 	//
 	tree := Tree{}
@@ -41,7 +41,7 @@ func TestTreeFindPathInEmptyTree(t *testing.T) {
 }
 
 func TestTreeFindKeyAndPath(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
@@ -64,7 +64,7 @@ func TestTreeFindKeyAndPath(t *testing.T) {
 // --- Find ------------------------------------------------------------------
 
 func TestTreeFindInEmptyTree(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
@@ -78,7 +78,7 @@ func TestTreeFindInEmptyTree(t *testing.T) {
 }
 
 func TestTreeFindInTree(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
@@ -95,7 +95,7 @@ func TestTreeFindInTree(t *testing.T) {
 // --- Insert ----------------------------------------------------------------
 
 func TestTreeInsertInEmptyTree(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
@@ -114,7 +114,7 @@ func TestTreeInsertInEmptyTree(t *testing.T) {
 }
 
 func TestTreeInsertTwiceInEmptyTree(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
@@ -140,7 +140,7 @@ func TestTreeInsertTwiceInEmptyTree(t *testing.T) {
 }
 
 func TestTreeInsertInLeaf(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
@@ -170,7 +170,7 @@ func TestTreeInsertInLeaf(t *testing.T) {
 }
 
 func TestTreeInsertWithSplit(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
@@ -199,7 +199,7 @@ func TestTreeInsertWithSplit(t *testing.T) {
 // --- Delete ----------------------------------------------------------------
 
 func TestTreeDeleteFromEmptyTree(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
@@ -215,7 +215,7 @@ func TestTreeDeleteFromEmptyTree(t *testing.T) {
 }
 
 func TestTreeDeleteInsertedKeyFromLeaf(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
@@ -233,7 +233,7 @@ func TestTreeDeleteInsertedKeyFromLeaf(t *testing.T) {
 	}
 }
 func TestTreeDeleteAndMerge(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
@@ -260,7 +260,7 @@ func TestTreeDeleteAndMerge(t *testing.T) {
 }
 
 func TestTreeDeleteInnerItem(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
@@ -277,8 +277,9 @@ func TestTreeDeleteInnerItem(t *testing.T) {
 	//t.Logf("tree =\n%s", printTree(tree))
 }
 
+/*
 func TestTreeExtFind(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
@@ -290,6 +291,7 @@ func TestTreeExtFind(t *testing.T) {
 		t.Error("expected key 6 to be found in tree, haven't")
 	}
 }
+*/
 
 // ---------------------------------------------------------------------------
 

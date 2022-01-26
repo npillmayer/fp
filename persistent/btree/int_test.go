@@ -33,7 +33,7 @@ func TestInternalCeiling(t *testing.T) {
 // --- Nodes -----------------------------------------------------------------
 
 func TestInternalNodeSlice(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	defer teardown()
 	//
 	node := xnode{}
@@ -68,7 +68,7 @@ func TestInternalNodeSlice(t *testing.T) {
 }
 
 func TestInternalNodeInsert(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	defer teardown()
 	//
 	node := xnode{}.withInsertedItem(xitem{key: 1, value: "1"}, 0)
@@ -108,7 +108,7 @@ func TestInternalNodeInsert(t *testing.T) {
 }
 
 func TestInternalNodeReplaceValue(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	defer teardown()
 	//
 	node := xnode{}.withInsertedItem(xitem{key: 1, value: 1}, 0)
@@ -119,7 +119,7 @@ func TestInternalNodeReplaceValue(t *testing.T) {
 }
 
 func TestInternalNodeDeleteItem(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
@@ -146,7 +146,7 @@ func TestInternalNodeDeleteItem(t *testing.T) {
 }
 
 func TestInternalCut(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	defer teardown()
 	//
 	node := xnode{}.withInsertedItem(xitem{key: 1, value: 1}, 0)
@@ -176,7 +176,7 @@ func TestInternalCut(t *testing.T) {
 }
 
 func TestInternalFindSlot(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
@@ -207,7 +207,7 @@ func TestInternalFindSlot(t *testing.T) {
 }
 
 func TestInternalLocate(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	//tracer().SetTraceLevel(tracing.LevelError)
 	defer teardown()
 	//
@@ -233,7 +233,7 @@ func (e ext) Cmp(key, itemKey, agg K) int {
 // --- Paths -----------------------------------------------------------------
 
 func TestInternalPathFold(t *testing.T) {
-	teardown := gotestingadapter.QuickConfig(t, "fp.btree")
+	teardown := gotestingadapter.QuickConfig(t, "persistent.btree")
 	defer teardown()
 	//
 	var path slotPath = make([]slot, 3)

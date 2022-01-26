@@ -183,7 +183,9 @@ func (tex TreeExtension) Locate(key K) Location {
 //
 // Supplying nil as an ext result in returning a default type TreeExtension.
 //
-func (tree Tree) Ext(ext Ext) TreeExtension
+func (tree Tree) Ext(ext Ext) TreeExtension {
+	return TreeExtension{} // TODO
+}
 
 // Location reflects a key/value pair in the B-tree, together with the node-path to it.
 // A location is valid for a specific incarnation of a tree only; applying any of its methods
