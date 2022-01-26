@@ -69,8 +69,9 @@ func TestDimenAuto(t *testing.T) {
 	d := css.DimenOption(p)
 	m := css.DimenPattern[string](d)
 	x := m.OneOf(css.DimenPatterns[string]{
-		None: "NONE",
-		Auto: "AUTO",
+		Unset:   "NONE",
+		Auto:    "AUTO",
+		Default: "NONE",
 	})
 	if x != "AUTO" {
 		t.Errorf("expected AUTO, have %v", x)

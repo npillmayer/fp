@@ -1,11 +1,8 @@
 package styledtree
 
-/*
-License
-
-*/
-
 import (
+	"strings"
+
 	"github.com/npillmayer/fp/dom/style"
 	"github.com/npillmayer/fp/tree"
 	"golang.org/x/net/html"
@@ -19,7 +16,16 @@ type StyNode struct {
 }
 
 func (sn *StyNode) String() string {
-	return "[" + sn.htmlNode.Data + "]"
+	h := sn.htmlNode
+	switch h.Type {
+	case html.DocumentNode:
+		return "[#document]"
+	case html.ElementNode:
+		return "[" + h.Data + "]"
+	case html.TextNode:
+		return "[#text:" + shortText(h) + "]"
+	}
+	return "[styled node]"
 }
 
 // NewNodeForHTMLNode creates a new styled node linked to an HTML node.
@@ -87,7 +93,7 @@ func (sn *StyNode) GetPropertyValue(key string, pmap *style.PropertyMap) style.P
 	return style.NullStyle
 }
 
-// --- styled-node creator ---------------------------------------------------
+// --- Helpers ---------------------------------------------------------------
 
 // Creator returns a style-creator for use in CSSOM.
 // The returned style.NodeCreator will then build up an instance of a styled tree
@@ -114,3 +120,16 @@ func (c creator) SetStyles(n *tree.Node[*StyNode], m *style.PropertyMap) {
 
 var _ style.NodeCreator = creator{}
 */
+
+func shortText(h *html.Node) string {
+	s := "\"\\\""
+	if len(h.Data) > 10 {
+		s += h.Data[:10] + "...\\\"\""
+	} else {
+		s += h.Data + "\\\"\""
+	}
+	s = strings.Replace(s, "\n", `\\n`, -1)
+	s = strings.Replace(s, "\t", `\\t`, -1)
+	s = strings.Replace(s, " ", "\u2423", -1)
+	return s
+}

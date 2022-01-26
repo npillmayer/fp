@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	dimenNone uint32 = 0
+	dimenUnset uint32 = 0
 
 	dimenAbsolute uint32 = 0x0001
 	dimenAuto     uint32 = 0x0002
@@ -106,15 +106,15 @@ func DimenOption(p style.Property) DimenT {
 
 // ---------------------------------------------------------------------------
 
-func (d DimenT) Match() *Matcher {
-	return &Matcher{dimen: d}
+func (d DimenT) Match() *DMatcher {
+	return &DMatcher{dimen: d}
 }
 
-type Matcher struct {
+type DMatcher struct {
 	dimen DimenT
 }
 
-func (m *Matcher) IsKind(d DimenT) *Matcher {
+func (m *DMatcher) IsKind(d DimenT) *DMatcher {
 	switch {
 	case (m.dimen.flags & kindMask) == (d.flags & kindMask):
 		return m
@@ -129,7 +129,14 @@ func (m *Matcher) IsKind(d DimenT) *Matcher {
 	return nil
 }
 
-func (m *Matcher) Just(du *dimen.DU) *Matcher {
+func (m *DMatcher) Unset() *DMatcher {
+	if m == nil || m.dimen.flags == dimenUnset {
+		return m
+	}
+	return nil
+}
+
+func (m *DMatcher) Just(du *dimen.DU) *DMatcher {
 	if m.dimen.flags&dimenAbsolute > 0 {
 		if du != nil {
 			*du = m.dimen.d
@@ -139,7 +146,7 @@ func (m *Matcher) Just(du *dimen.DU) *Matcher {
 	return nil
 }
 
-func (m *Matcher) Percentage(p *Percent) *Matcher {
+func (m *DMatcher) Percentage(p *Percent) *DMatcher {
 	if m.dimen.flags&dimenPercent > 0 {
 		if p != nil {
 			*p = m.dimen.percent
@@ -153,7 +160,7 @@ func (m *Matcher) Percentage(p *Percent) *Matcher {
 
 //type DimenPatterns[T any] map[*MatchExpr[T]]T
 type DimenPatterns[T any] struct {
-	None    T
+	Unset   T
 	Auto    T
 	Inherit T
 	Initial T
@@ -161,18 +168,18 @@ type DimenPatterns[T any] struct {
 	Default T
 }
 
-func DimenPattern[T any](d DimenT) *MatchExpr[T] {
-	return &MatchExpr[T]{dimen: d}
+func DimenPattern[T any](d DimenT) *DMatchExpr[T] {
+	return &DMatchExpr[T]{dimen: d}
 }
 
-type MatchExpr[T any] struct {
+type DMatchExpr[T any] struct {
 	dimen DimenT
 }
 
-func (m *MatchExpr[T]) OneOf(patterns DimenPatterns[T]) T {
+func (m *DMatchExpr[T]) OneOf(patterns DimenPatterns[T]) T {
 	switch {
-	case m.dimen.flags == dimenNone:
-		return patterns.None
+	case m.dimen.flags == dimenUnset:
+		return patterns.Unset
 	case m.dimen.flags&dimenAuto > 0:
 		return patterns.Auto
 	case m.dimen.flags&dimenAbsolute > 0:
@@ -185,12 +192,12 @@ func (m *MatchExpr[T]) OneOf(patterns DimenPatterns[T]) T {
 	return patterns.Default
 }
 
-func (m *MatchExpr[T]) With(du *dimen.DU) *MatchExpr[T] {
+func (m *DMatchExpr[T]) With(du *dimen.DU) *DMatchExpr[T] {
 	*du = m.dimen.d
 	return m
 }
 
-func (m *MatchExpr[T]) Const(x T) T {
+func (m *DMatchExpr[T]) Const(x T) T {
 	return x
 }
 
@@ -198,7 +205,7 @@ func (m *MatchExpr[T]) Const(x T) T {
 
 // IsNone returns true if d is unset.
 func (d DimenT) IsNone() bool {
-	return d.flags == dimenNone
+	return d.flags == dimenUnset
 }
 
 // IsRelative returns true if d represents a valid relative dimension (`%`, `em`, etc.).
