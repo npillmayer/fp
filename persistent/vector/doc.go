@@ -28,7 +28,7 @@ import (
 	"github.com/npillmayer/schuko/tracing"
 )
 
-// tracer traces with key 'fp.vector'.
+// tracer traces with key 'persistent.vector'.
 func tracer() tracing.Trace {
-	return tracing.Select("fp.vector")
+	return tracing.Select("persistent.vector")
 }

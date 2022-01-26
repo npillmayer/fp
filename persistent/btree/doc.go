@@ -27,7 +27,7 @@ import (
 	"github.com/npillmayer/schuko/tracing"
 )
 
-// tracer traces with key 'fp.btree'.
+// tracer traces with key 'persistent.btree'.
 func tracer() tracing.Trace {
-	return tracing.Select("fp.btree")
+	return tracing.Select("persistent.btree")
 }
