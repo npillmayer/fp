@@ -37,7 +37,7 @@ func (node vnode[T]) String() string {
 			if c == nil {
 				b.WriteByte('_')
 			} else {
-				b.WriteByte('X')
+				b.WriteString("▪︎")
 			}
 		}
 	}

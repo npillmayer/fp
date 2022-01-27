@@ -1,9 +1,11 @@
 package vector
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/npillmayer/schuko/tracing/gotestingadapter"
+	tp "github.com/xlab/treeprint"
 )
 
 func TestCapacity(t *testing.T) {
@@ -49,6 +51,7 @@ func TestLocation1(t *testing.T) {
 	t.Logf("path=%v", path)
 	v, path = v.location(39, nil)
 	t.Logf("path=%v", path)
+	t.Logf(printVec(v))
 }
 
 func TestLocation2(t *testing.T) {
@@ -63,6 +66,35 @@ func TestLocation2(t *testing.T) {
 	node.leafs[2] = 14
 
 	v := Vector[int]{depth: 2, head: &root, bucketSize: k}
-	_, path := v.location(39, nil)
+	w, path := v.location(39, nil)
 	t.Logf("path=%v", path)
+	t.Logf(printVec(w))
+}
+
+// --- Print tree ------------------------------------------------------------
+
+func printVec[T any](v Vector[T]) string {
+	header := fmt.Sprintf("\nVector(len=%d, depth=%d, k=%d)\n", v.len, v.depth, v.bucketSize)
+	printer := tp.New()
+	ppt(printer, v.head, v.depth, 0, v.bucketSize)
+	return header + printer.String() + "\n"
+}
+
+func ppt[T any](printer tp.Tree, node *vnode[T], h, j, k int) {
+	if node == nil {
+		return
+	}
+	if node.leaf {
+		pp := p(k, h)
+		//j = j / pp
+		printer.AddNode(node.String() + fmt.Sprintf("%d  %d…%d", pp, j, j+pp-1))
+		return
+	}
+	pp := p(k, h)
+	branch := printer.AddBranch(node.String() + fmt.Sprintf("%d  %d…%d", pp, j, j+pp-1))
+	//j = j / pp
+	pp = p(k, h-1)
+	for i, ch := range node.children {
+		ppt(branch, ch, h-1, (i*pp)+j, k)
+	}
 }

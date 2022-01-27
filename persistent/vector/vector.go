@@ -67,13 +67,17 @@ func (v Vector[T]) adjustCapacity(i int) Vector[T] {
 	h := v.head       // may be nil
 	var node vnode[T] // (parent) node to create
 	for vcap <= i {
+		if h == nil {
+			d++
+			vcap = p(k, d)
+			continue
+		}
 		if d == 0 {
 			node = leafs[T](k)
 		} else {
 			node = nodes[T](k)
 			node.children[0] = h // must always be leftmost child
 		}
-		// now prepare iteration
 		h = &node
 		d++
 		vcap = p(k, d)
@@ -106,7 +110,7 @@ func (v Vector[T]) location(i int, pathBuf slotPath[T]) (Vector[T], slotPath[T])
 	leaf := leafs[T](k)
 	s := slot[T]{inx: j, node: &leaf}
 	path = append(path, s)
-	path.dropLast().foldR(chain[T], s)
+	w.head = path.dropLast().foldR(chain[T], s).node
 	tracer().Debugf("after locate: path=%v, depth=%d", path, w.depth)
 	return w, path
 }
