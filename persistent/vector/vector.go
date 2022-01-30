@@ -44,8 +44,8 @@ func (v Vector[T]) findPath(i int, pathBuf slotPath[T]) (bool, int, slotPath[T])
 	}
 	n, d, k, j := v.head, v.depth, v.bucketSize, i
 	for n != nil && !n.leaf {
-		tracer().Debugf("entering inner node %v cap=%d", n, p(k, d))
-		pp := p(k, d-1)
+		tracer().Debugf("entering inner node %v cap=%d", n, capacity(k, d))
+		pp := capacity(k, d-1)
 		inx := j / pp
 		j = j % pp
 		path = append(path, slot[T]{inx: inx, node: n})
@@ -63,13 +63,13 @@ func (v Vector[T]) findPath(i int, pathBuf slotPath[T]) (bool, int, slotPath[T])
 
 func (v Vector[T]) adjustCapacity(i int) Vector[T] {
 	d, k := v.depth, v.bucketSize
-	vcap := p(k, d)   // capacity of v depending on depth d
-	h := v.head       // may be nil
-	var node vnode[T] // (parent) node to create
+	vcap := capacity(k, d) // capacity of v depending on depth d
+	h := v.head            // may be nil
+	var node vnode[T]      // (parent) node to create
 	for vcap <= i {
 		if h == nil {
 			d++
-			vcap = p(k, d)
+			vcap = capacity(k, d)
 			continue
 		}
 		if d == 0 {
@@ -80,7 +80,7 @@ func (v Vector[T]) adjustCapacity(i int) Vector[T] {
 		}
 		h = &node
 		d++
-		vcap = p(k, d)
+		vcap = capacity(k, d)
 		tracer().Debugf("created inner node %v cap=%d", node, vcap)
 	}
 	w := v.shallowClone()
@@ -99,7 +99,7 @@ func (v Vector[T]) location(i int, pathBuf slotPath[T]) (Vector[T], slotPath[T])
 	k, d := v.bucketSize, w.depth-len(path)
 	tracer().Debugf("after find: path=%v, d=%d", path, d)
 	for d > 1 {
-		pp := p(k, d-1)
+		pp := capacity(k, d-1)
 		inx := j / pp
 		j = j % pp
 		c := make([]*vnode[T], k)
@@ -122,14 +122,14 @@ func (v Vector[T]) shallowClone() Vector[T] {
 	}
 }
 
-func p(a, b int) int {
-	if b == 0 {
+func capacity(k, height int) int {
+	if height == 0 {
 		return 0
 	}
-	r := a
-	for b > 1 {
-		r *= a
-		b--
+	c := k
+	for height > 1 {
+		c *= k
+		height--
 	}
-	return r
+	return c
 }

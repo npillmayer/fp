@@ -19,6 +19,19 @@ type vnode[T any] struct {
 	leafs    bucket[T]
 }
 
+func nodes[T any](n int) vnode[T] {
+	return vnode[T]{
+		children: make([]*vnode[T], n),
+	}
+}
+
+func leafs[T any](n int) vnode[T] {
+	return vnode[T]{
+		leaf:  true,
+		leafs: make([]T, n),
+	}
+}
+
 func (node vnode[T]) String() string {
 	b := strings.Builder{}
 	b.WriteByte('[')
@@ -45,20 +58,8 @@ func (node vnode[T]) String() string {
 	return b.String()
 }
 
-func nodes[T any](n int) vnode[T] {
-	return vnode[T]{
-		children: make([]*vnode[T], n),
-	}
-}
-
-func leafs[T any](n int) vnode[T] {
-	return vnode[T]{
-		leaf:  true,
-		leafs: make([]T, n),
-	}
-}
-
 func cloneSeam[T any](parent, child slot[T]) slot[T] {
+	assertThat(parent.node != nil, "inconsistency: parent of a child is never nil")
 	if parent.node == nil {
 		return child
 	}
@@ -73,6 +74,14 @@ func chain[T any](parent, child slot[T]) slot[T] {
 	assertThat(!parent.node.leaf, "inconsistency: parent of a child is never a leaf")
 	parent.node.children[parent.inx] = child.node
 	return parent
+}
+
+func (node *vnode[T]) foldLeafs(f func(T, T) T, zero T) T {
+	r := zero
+	for _, l := range node.leafs {
+		r = f(zero, l)
+	}
+	return r
 }
 
 func (v Vector[T]) lastSlot(path slotPath[T]) slotPath[T] {
