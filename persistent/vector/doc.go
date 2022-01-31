@@ -1,6 +1,5 @@
 /*
-Package vector implements an immutable persistent vector, designed for use-cases
-similar to Go slices.
+Package vector implements an immutable persistent vector.
 
 An immutable persistent vector has copy-on-write behaviour: Each “modification” of the vector
 (insertion, replacement or deletion) creates a copy, leaving the original unmodified.

@@ -5,37 +5,101 @@ import (
 	"strings"
 )
 
-type bucket[T any] []T
+const (
+	bits   uint32 = 3 // will produce nodes with degree  2^3 = 8
+	degree uint32 = 1 << bits
+	mask   uint32 = degree - 1
+)
 
-func (b bucket[T]) at(i int) T {
-	return b[i]
+type props struct {
+	bits   uint32 // number of bits to use per level
+	degree uint32 // degree is always 2^bits
+	mask   uint32 // mask is degree - 1, i.e. a bit pattern with trailing 1s of length 'bits'
+	shift  uint32 // we do not store h(v), but rather bits*h(v)
+
 }
 
-// vnode represents node in the tree a vector is made of. An empty vnode represents
-// a bucket of leafs (initially zero).
+func (p props) init() props {
+	if p.bits > 0 {
+		return p
+	}
+	return props{
+		bits:   bits,
+		degree: degree,
+		mask:   mask,
+	}
+}
+
+func (p props) withShift(shift uint32) props {
+	p.shift = shift
+	return p
+}
+
 type vnode[T any] struct {
-	leaf     bool
 	children []*vnode[T]
-	leafs    bucket[T]
+	leafs    []T
 }
 
-func nodes[T any](n int) vnode[T] {
-	return vnode[T]{
-		children: make([]*vnode[T], n),
+func emptyNode[T any](k uint32) *vnode[T] {
+	return &vnode[T]{
+		children: make([]*vnode[T], int(k)),
 	}
 }
-
-func leafs[T any](n int) vnode[T] {
-	return vnode[T]{
-		leaf:  true,
-		leafs: make([]T, n),
+func newLeaf[T any](tail []T) *vnode[T] {
+	l := make([]T, len(tail))
+	if tail != nil {
+		copy(l, tail)
 	}
+	return &vnode[T]{leafs: l}
+}
+
+func (node vnode[T]) clone(extend bool) *vnode[T] {
+	ext := 0
+	if extend {
+		ext = 1
+	}
+	n := &vnode[T]{}
+	if node.leafs != nil {
+		n.leafs = make([]T, len(node.leafs), len(node.leafs)+ext)
+		copy(n.leafs, node.leafs)
+	}
+	if node.children != nil {
+		n.children = make([]*vnode[T], len(node.children), len(node.children)+ext)
+		copy(n.children, node.children)
+	}
+	return n
+}
+
+func cloneTail[T any](tail []T, l int) []T {
+	var newTail []T
+	newTail = make([]T, l)
+	if tail != nil {
+		copy(newTail, tail[:min(l, len(tail))])
+	}
+	return newTail
+}
+
+func newPath[T any](levels, bits, k uint32, tail []T) *vnode[T] {
+	//assertThat(levels > 0, "levels must be > 0 to create path, is %d", levels)
+	// topNode := emptyNode[T](k)
+	// topNode.children[0] =
+	topNode := newLeaf(tail)
+	tracer().Debugf("pushing down tail %v", tail)
+	tracer().Debugf("levels = %d, bits = %d", levels, bits)
+	for level := levels; level > 0; level -= bits {
+		tracer().Debugf("creating intermediate node at level %d", level)
+		tracer().Debugf("level = %d, bits = %d", level, bits)
+		newTop := emptyNode[T](k)
+		newTop.children[0] = topNode
+		topNode = newTop
+	}
+	return topNode
 }
 
 func (node vnode[T]) String() string {
 	b := strings.Builder{}
 	b.WriteByte('[')
-	if node.leaf {
+	if node.leafs != nil {
 		for i, l := range node.leafs {
 			if i > 0 {
 				b.WriteByte(',')
@@ -58,71 +122,18 @@ func (node vnode[T]) String() string {
 	return b.String()
 }
 
-func cloneSeam[T any](parent, child slot[T]) slot[T] {
-	assertThat(parent.node != nil, "inconsistency: parent of a child is never nil")
-	if parent.node == nil {
-		return child
-	}
-	assertThat(!parent.node.leaf, "inconsistency: parent of a child is never a leaf")
-	newp := parent.clone()
-	newp.node.children[parent.inx] = child.node
-	return newp
-}
-
-func chain[T any](parent, child slot[T]) slot[T] {
-	assertThat(parent.node != nil, "inconsistency: parent of a child is never nil")
-	assertThat(!parent.node.leaf, "inconsistency: parent of a child is never a leaf")
-	parent.node.children[parent.inx] = child.node
-	return parent
-}
-
-func (node *vnode[T]) foldLeafs(f func(T, T) T, zero T) T {
-	r := zero
-	for _, l := range node.leafs {
-		r = f(zero, l)
-	}
-	return r
-}
-
-func (v Vector[T]) lastSlot(path slotPath[T]) slotPath[T] {
-	path = path[:0]
-	n := v.head
-	for n != nil {
-		if n.leaf {
-			l := len(n.leafs)
-			path = append(path, slot[T]{inx: l - 1, node: n})
-			n = nil
-		} else {
-			c := n.children
-			assertThat(len(c) > 0, "attempt to get last child of uninitialized inner node")
-			path = append(path, slot[T]{inx: len(c) - 1})
-			n = c[len(c)-1]
-		}
-	}
-	return path
-}
-
-func (node *vnode[T]) last() slot[T] {
-	assertThat(node != nil, "attempt to get last slot from an uninitialized node")
-	if node.leaf {
-		return slot[T]{inx: len(node.leafs) - 1, node: node}
-	}
-	return slot[T]{inx: len(node.children) - 1, node: node}
-}
-
-func (s slot[T]) full() bool {
-	assertThat(s.node != nil, "node in slot may never be unintialized")
-	if s.node.leaf {
-		return s.inx == cap(s.node.leafs)-1
-	}
-	return s.inx == cap(s.node.children)-1
-}
-
-// --- Helpers ---------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 func assertThat(that bool, msg string, msgargs ...interface{}) {
 	if !that {
-		msg = fmt.Sprintf("vector: "+msg, msgargs...)
+		msg = fmt.Sprintf("persistent.vector: "+msg, msgargs...)
 		panic(msg)
 	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
