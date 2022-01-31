@@ -6,17 +6,28 @@ import (
 )
 
 const (
-	bits   uint32 = 5 // will produce nodes with degree  2 ^ 5 = 32
+	bits   uint32 = 3 // will produce nodes with degree  2^3 = 8
 	degree uint32 = 1 << bits
 	mask   uint32 = degree - 1
 )
 
 type props struct {
 	bits   uint32 // number of bits to use per level
-	degree uint32 // degree is always 2 ^ bits
+	degree uint32 // degree is always 2^bits
 	mask   uint32 // mask is degree - 1, i.e. a bit pattern with trailing 1s of length 'bits'
 	shift  uint32 // we do not store h(v), but rather bits*h(v)
 
+}
+
+func (p props) init() props {
+	if p.bits > 0 {
+		return p
+	}
+	return props{
+		bits:   bits,
+		degree: degree,
+		mask:   mask,
+	}
 }
 
 func (p props) withShift(shift uint32) props {
@@ -69,9 +80,15 @@ func cloneTail[T any](tail []T, l int) []T {
 }
 
 func newPath[T any](levels, bits, k uint32, tail []T) *vnode[T] {
-	topNode := emptyNode[T](k)
-	topNode.children[0] = newLeaf(tail)
+	//assertThat(levels > 0, "levels must be > 0 to create path, is %d", levels)
+	// topNode := emptyNode[T](k)
+	// topNode.children[0] =
+	topNode := newLeaf(tail)
+	tracer().Debugf("pushing down tail %v", tail)
+	tracer().Debugf("levels = %d, bits = %d", levels, bits)
 	for level := levels; level > 0; level -= bits {
+		tracer().Debugf("creating intermediate node at level %d", level)
+		tracer().Debugf("level = %d, bits = %d", level, bits)
 		newTop := emptyNode[T](k)
 		newTop.children[0] = topNode
 		topNode = newTop
