@@ -152,7 +152,10 @@ func (node *Node[T]) Child(n int) (*Node[T], bool) {
 // Children returns a slice with all children of a node.
 // If omitNilChildren is set, empty children aren't included in the slice
 func (node *Node[T]) Children(omitNilChildren bool) []*Node[T] {
-	return node.children.asSlice(omitNilChildren)
+	if omitNilChildren {
+		return node.children.compact()
+	}
+	return node.children.clone()
 }
 
 // IndexOfChild returns the index of a child within the list of children
