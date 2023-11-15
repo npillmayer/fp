@@ -14,37 +14,38 @@ import (
 	"fmt"
 )
 
-/*
-We manage a tree of mutable nodes. Each nodes carries a payload of type parameter T.
-Nodes maintain a slice of children.
-
-In the future, we may move to immutable nodes to reduce lock contention, but first let's get
-some experience with this one.
-*/
+// cowTag is a tag for transient/mutable handling of nodes (cow = change on write).
+type cowTag struct{} // just a thing with an identity
 
 // Node is the base type our tree is built of.
 type Node[T comparable] struct {
-	Payload  T        // nodes may carry a payload of arbitrary type
 	parent   *Node[T] // parent node of this node
 	children chvec[T] // children nodes
 	Rank     uint32   // rank is used for preserving sequence
+	Payload  T        // nodes may carry a payload of arbitrary type
+	cow      *cowTag  // tag held during transient/mutable handling
 }
 
 // NewNode creates a new tree node with a given payload.
-func NewNode[T comparable](payload T) Node[T] {
-	return Node[T]{Payload: payload}
+func NewNode[T comparable](payload T) *Node[T] {
+	return &Node[T]{Payload: payload}
 }
 
-func (node Node[T]) clone(children []*Node[T], transient bool) Node[T] {
+// clone creates a copy of a node. Children are not copied.
+func (node Node[T]) clone(children []*Node[T]) Node[T] {
 	return Node[T]{
 		Payload:  node.Payload,
 		parent:   node.parent,
 		Rank:     node.Rank,
 		children: node.children.clone(),
+		cow:      node.cow,
 	}
 }
 
 func (node Node[T]) String() string {
+	if node.children.length() == 0 {
+		return fmt.Sprintf("(Leaf %v)", node.Payload)
+	}
 	return fmt.Sprintf("(Node #ch=%d %v)", node.ChildCount(), node.Payload)
 }
 
@@ -54,23 +55,23 @@ func (node Node[T]) String() string {
 //
 // This operation is concurrency-safe.
 func (node *Node[T]) AddChild(ch *Node[T]) *Node[T] {
-	return node.add(ch, false)
+	return node.add(ch, nil)
 }
 
-func (node *Node[T]) add(ch *Node[T], transient bool) *Node[T] {
+func (node *Node[T]) add(ch *Node[T], cow *cowTag) *Node[T] {
 	var n *Node[T] = node
-	if !transient {
-		newnode := node.clone(node.children, false)
+	if needcopy(node, cow) {
+		newnode := node.clone(node.children)
 		n = &newnode
 	}
-	node.children = n.children.appendChild(ch)
+	n.children = n.children.appendChild(ch)
 	if ch != nil {
-		n.children[len(node.children)-1].parent = node
+		n.children[len(n.children)-1].parent = node
 	}
-	return node
+	return n
 }
 
-// SetChildAt inserts a new child node into the tree.
+// ReplaceChild inserts a new child node into the tree.
 // The newly inserted node is connected to this node as its parent.
 // The child is set at a given position in relation to other children,
 // replacing the child at position i if it exists.
@@ -78,19 +79,20 @@ func (node *Node[T]) add(ch *Node[T], transient bool) *Node[T] {
 //
 // This operation is concurrency-safe.
 //
-func (node *Node[T]) ReplaceChild(i int, ch *Node[T], transient bool) *Node[T] {
-	return node.replaceChild(i, ch, false)
+func (node *Node[T]) ReplaceChild(i int, ch *Node[T]) *Node[T] {
+	return node.replaceChild(i, ch, nil)
 }
 
-func (node *Node[T]) replaceChild(i int, ch *Node[T], transient bool) *Node[T] {
+func (node *Node[T]) replaceChild(i int, ch *Node[T], cow *cowTag) *Node[T] {
 	var n *Node[T] = node
-	if !transient {
-		newnode := node.clone(node.children, false)
+	if needcopy(node, cow) {
+		newnode := node.clone(node.children)
 		n = &newnode
 	}
 	n.children = n.children.replaceChild(i, ch)
 	if ch != nil {
-		n.children[i].parent = node
+		//n.children[i].parent = node
+		ch.parent = node
 	}
 	return n
 }
@@ -104,18 +106,19 @@ func (node *Node[T]) replaceChild(i int, ch *Node[T], transient bool) *Node[T] {
 // This operation is concurrency-safe.
 //
 func (node *Node[T]) InsertChild(i int, ch *Node[T]) *Node[T] {
-	return node.insertChild(i, ch, false)
+	return node.insertChild(i, ch, nil)
 }
 
-func (node *Node[T]) insertChild(i int, ch *Node[T], transient bool) *Node[T] {
+func (node *Node[T]) insertChild(i int, ch *Node[T], cow *cowTag) *Node[T] {
 	var n *Node[T] = node
-	if !transient {
-		newnode := node.clone(node.children, false)
+	if needcopy(node, cow) {
+		newnode := node.clone(node.children)
 		n = &newnode
 	}
 	n.children = n.children.insertChildAt(i, ch)
 	if ch != nil {
-		n.children[i].parent = node
+		//n.children[i].parent = node
+		ch.parent = node
 	}
 	return n
 }
@@ -248,4 +251,8 @@ func (chs chvec[T]) compact() []*Node[T] {
 		}
 	}
 	return children
+}
+
+func needcopy[T comparable](node *Node[T], cow *cowTag) bool {
+	return cow == nil || node.cow != cow
 }

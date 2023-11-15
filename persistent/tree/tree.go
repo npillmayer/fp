@@ -179,9 +179,11 @@ func Whatever[T comparable]() Predicate[T] {
 // NodeIsLeaf is a predicate to match leafs of a tree.
 func NodeIsLeaf[T comparable]() Predicate[T] {
 	return func(test *Node[T], node *Node[T]) (match *Node[T], err error) {
-		if test.ChildCount() == 0 {
+		if test.children.length() == 0 {
+			tracer().Debugf("******************** is leaf? true %v", test)
 			return test, nil
 		}
+		tracer().Debugf("******************** is leaf? false %v", test)
 		return nil, nil
 	}
 }
@@ -527,6 +529,7 @@ func bottomUp[T comparable](node *Node[T], isBuffered bool, udata userdata, push
 // Leaf nodes will have a rank of 1.
 func CalcRank[T comparable](n *Node[T], parent *Node[T], position int) (*Node[T], error) {
 	//
+	tracer().Errorf("parent %v, %v -> node %v", parent, n.parent, n)
 	r := uint32(1)
 	for i := 0; i < n.ChildCount(); i++ {
 		ch, ok := n.Child(i)
@@ -535,5 +538,6 @@ func CalcRank[T comparable](n *Node[T], parent *Node[T], position int) (*Node[T]
 		}
 	}
 	n.Rank = r
+	tracer().Errorf("############################ node %v has rank %d", n, n.Rank)
 	return n, nil
 }
